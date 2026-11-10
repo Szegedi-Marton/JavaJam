@@ -1,6 +1,7 @@
 package service;
 
 import model.Music;
+
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -36,8 +37,6 @@ public class YoutubeScraperService {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             String html = response.body();
 
-            // Safer pattern: Looks for videoRenderer blocks which cleanly group videoId and title together
-            // Or matches strict non-greedy title text inside runs
             Pattern videoBlockPattern = Pattern.compile(
                     "\"videoRenderer\":\\{(.*?)(?=,\"(?:trackingParams|menu|thumbnailOverlays)\"|\\}\\s*,\\s*\"videoRenderer\"|$)",
                     Pattern.DOTALL

@@ -52,7 +52,7 @@ public class MusicController {
             }
         });
 
-        // Play / Pause
+        // Play
         view.getPlayPauseButton().addActionListener(e -> togglePlayPause());
 
         // Stop
@@ -104,26 +104,18 @@ public class MusicController {
 
                 if (duration > 0) {
 
-                    double target =
-                            duration * slider.getValue() / 1000.0;
+                    double target = duration * slider.getValue() / 1000.0;
 
-                    view.getCurrentTimeLabel().setText(
-                            formatTime(target)
-                    );
+                    view.getCurrentTimeLabel().setText(formatTime(target));
                 }
 
             } else if (isSeeking) {
 
                 isSeeking = false;
 
-                double target = cachedDuration *
-                        (slider.getValue() / 1000.0);
+                double target = cachedDuration * (slider.getValue() / 1000.0);
 
-                System.out.println(
-                        "[JAVA SEEK] Slider: " + slider.getValue() +
-                                " Duration: " + cachedDuration +
-                                " Target: " + target
-                );
+                System.out.println("[JAVA SEEK] Slider: " + slider.getValue() + " Duration: " + cachedDuration + " Target: " + target);
 
                 view.seekVideo(target);
             }
@@ -134,16 +126,7 @@ public class MusicController {
 
     private void handleJamAction() {
         String[] options = {"Host Session", "Join Session", "Cancel"};
-        int choice = JOptionPane.showOptionDialog(
-                view,
-                "Choose Jam Mode:",
-                "Jam Session",
-                JOptionPane.DEFAULT_OPTION,
-                JOptionPane.QUESTION_MESSAGE,
-                null,
-                options,
-                options[0]
-        );
+        int choice = JOptionPane.showOptionDialog(view, "Choose Jam Mode:", "Jam Session", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
 
         if (choice == 0) {
             // HOST MODE
@@ -158,7 +141,7 @@ public class MusicController {
                 }
             }
         } else if (choice == 1) {
-            // CLIENT / JOIN MODE
+            // CLIENT MODE
             String input = JOptionPane.showInputDialog(view, "Enter Host IP:Port (e.g. 192.168.1.50:8888):", "127.0.0.1:8888");
             if (input != null && input.contains(":")) {
                 String[] parts = input.split(":");
@@ -173,14 +156,11 @@ public class MusicController {
         }
     }
 
-
-
     private void startPlaybackTimer() {
 
         playbackTimer = new Timer(500, e -> {
 
-            if (isSeeking ||
-                    view.getSeekSlider().getValueIsAdjusting()) {
+            if (isSeeking || view.getSeekSlider().getValueIsAdjusting()) {
                 return;
             }
 
@@ -190,24 +170,15 @@ public class MusicController {
 
                 cachedDuration = duration;
 
-                view.getCurrentTimeLabel().setText(
-                        formatTime(currentTime)
-                );
+                view.getCurrentTimeLabel().setText(formatTime(currentTime));
 
-                view.getDurationLabel().setText(
-                        formatTime(duration)
-                );
+                view.getDurationLabel().setText(formatTime(duration));
 
-                if (!isSeeking &&
-                        !view.getSeekSlider().getValueIsAdjusting()) {
+                if (!isSeeking && !view.getSeekSlider().getValueIsAdjusting()) {
 
-                    int progress = (int)(
-                            currentTime / duration * 1000
-                    );
+                    int progress = (int) (currentTime / duration * 1000);
 
-                    view.getSeekSlider().setValue(
-                            Math.max(0, Math.min(1000, progress))
-                    );
+                    view.getSeekSlider().setValue(Math.max(0, Math.min(1000, progress)));
                 }
             });
         });
@@ -222,11 +193,7 @@ public class MusicController {
         int minutes = totalSeconds / 60;
         int remainingSeconds = totalSeconds % 60;
 
-        return String.format(
-                "%02d:%02d",
-                minutes,
-                remainingSeconds
-        );
+        return String.format("%02d:%02d", minutes, remainingSeconds);
     }
 
     private void searchTracks(String query) {
@@ -249,12 +216,7 @@ public class MusicController {
                     currentTrackIndex = -1;
                 } catch (Exception e) {
                     e.printStackTrace();
-                    JOptionPane.showMessageDialog(
-                            view,
-                            "Unable to search YouTube tracks.",
-                            "Search Error",
-                            JOptionPane.ERROR_MESSAGE
-                    );
+                    JOptionPane.showMessageDialog(view, "Unable to search YouTube tracks.", "Search Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
