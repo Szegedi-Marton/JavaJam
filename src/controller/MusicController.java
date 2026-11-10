@@ -21,6 +21,7 @@ public class MusicController {
     private boolean repeatEnabled = false;
     private boolean isSeeking = false;
     private Timer playbackTimer;
+    private double cachedDuration = 0;
 
     public MusicController(MusicView view) {
         this.view = view;
@@ -96,22 +97,35 @@ public class MusicController {
             JSlider slider = view.getSeekSlider();
 
             if (slider.getValueIsAdjusting()) {
+
                 isSeeking = true;
-                return;
-            }
 
-            if (isSeeking) {
-                isSeeking = false;
-
-                double duration = view.getCachedDuration();
+                double duration = cachedDuration;
 
                 if (duration > 0) {
+
                     double target =
                             duration * slider.getValue() / 1000.0;
 
-                    view.seekVideo(target);
-                    jamManager.broadcast("SEEK:" + target);
+                    view.getCurrentTimeLabel().setText(
+                            formatTime(target)
+                    );
                 }
+
+            } else if (isSeeking) {
+
+                isSeeking = false;
+
+                double target = cachedDuration *
+                        (slider.getValue() / 1000.0);
+
+                System.out.println(
+                        "[JAVA SEEK] Slider: " + slider.getValue() +
+                                " Duration: " + cachedDuration +
+                                " Target: " + target
+                );
+
+                view.seekVideo(target);
             }
         });
 
@@ -138,7 +152,7 @@ public class MusicController {
                 try {
                     int port = Integer.parseInt(portStr.trim());
                     jamManager.startHosting(port);
-                    view.getDetailsArea().append("\n[Hosting Jam on port " + port + "]\n");
+
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(view, "Invalid port number.", "Error", JOptionPane.ERROR_MESSAGE);
                 }
@@ -159,29 +173,36 @@ public class MusicController {
         }
     }
 
-    private void startPlaybackTimer() {
 
-        if (playbackTimer != null) {
-            playbackTimer.stop();
-        }
+
+    private void startPlaybackTimer() {
 
         playbackTimer = new Timer(500, e -> {
 
-            view.getVideoInformation((currentTime, totalDuration) -> {
+            if (isSeeking ||
+                    view.getSeekSlider().getValueIsAdjusting()) {
+                return;
+            }
+
+            view.getVideoInformation((currentTime, duration) -> {
+
+                if (duration <= 0) return;
+
+                cachedDuration = duration;
 
                 view.getCurrentTimeLabel().setText(
                         formatTime(currentTime)
                 );
 
                 view.getDurationLabel().setText(
-                        formatTime(totalDuration)
+                        formatTime(duration)
                 );
 
-                if (!view.getSeekSlider().getValueIsAdjusting()
-                        && totalDuration > 0) {
+                if (!isSeeking &&
+                        !view.getSeekSlider().getValueIsAdjusting()) {
 
-                    int progress = (int) (
-                            (currentTime / totalDuration) * 1000.0
+                    int progress = (int)(
+                            currentTime / duration * 1000
                     );
 
                     view.getSeekSlider().setValue(
@@ -240,11 +261,7 @@ public class MusicController {
     }
 
     private void handleTrackSelection(Music track) {
-        view.getDetailsArea().setText(
-                "Now Playing / Selected:\n" +
-                        "Title: " + track.getName() + "\n" +
-                        "URL: " + track.getUrl()
-        );
+
 
         view.setNowPlaying(track.getName());
         isPlaying = true;

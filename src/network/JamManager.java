@@ -31,9 +31,7 @@ public class JamManager {
         new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(port);
-                SwingUtilities.invokeLater(() ->
-                        view.getDetailsArea().append("\n[Jam Host Started on port " + port + "]\n")
-                );
+
 
                 while (true) {
                     Socket socket = serverSocket.accept();
@@ -73,9 +71,7 @@ public class JamManager {
                 in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
                 isConnected = true;
 
-                SwingUtilities.invokeLater(() ->
-                        view.getDetailsArea().append("\n[Successfully joined Jam Session!]\n")
-                );
+
 
                 String line;
                 while ((line = in.readLine()) != null) {
