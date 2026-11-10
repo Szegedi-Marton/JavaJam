@@ -1,6 +1,7 @@
 package network;
 
 import view.MusicView;
+
 import javax.swing.*;
 import java.io.*;
 import java.net.*;
@@ -22,9 +23,7 @@ public class JamManager {
         this.view = view;
     }
 
-    // ==========================================
     // HOST MODE
-    // ==========================================
     public void startHosting(int port) {
         isHost = true;
         isConnected = true;
@@ -49,7 +48,7 @@ public class JamManager {
         }).start();
     }
 
-    // Broadcast a command to all connected clients (Host -> Clients)
+    // Broadcast a command to all clients
     public void broadcast(String command) {
         if (!isHost) return;
         synchronized (clientWriters) {
@@ -59,9 +58,7 @@ public class JamManager {
         }
     }
 
-    // ==========================================
     // CLIENT MODE
-    // ==========================================
     public void joinHost(String ipAddress, int port) {
         isHost = false;
         new Thread(() -> {
@@ -70,7 +67,6 @@ public class JamManager {
                 out = new PrintWriter(clientSocket.getOutputStream(), true);
                 in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
                 isConnected = true;
-
 
 
                 String line;
@@ -94,13 +90,9 @@ public class JamManager {
         }
     }
 
-    // ==========================================
+
     // COMMAND PARSER & EXECUTOR
-    // ==========================================
     private void handleIncomingCommand(String cmd) {
-        // Example format: PLAY_VIDEO:dQw4w9WgXcQ
-        // Example format: SEEK:45.5
-        // Example format: PAUSE
         String[] parts = cmd.split(":", 2);
         String action = parts[0];
         String data = parts.length > 1 ? parts[1] : "";
@@ -120,7 +112,8 @@ public class JamManager {
                     try {
                         double seconds = Double.parseDouble(data);
                         view.seekVideo(seconds);
-                    } catch (NumberFormatException ignored) {}
+                    } catch (NumberFormatException ignored) {
+                    }
                     break;
                 case "STOP":
                     view.stopVideo();
@@ -131,7 +124,10 @@ public class JamManager {
 
     private class ClientHandler implements Runnable {
         private Socket socket;
-        public ClientHandler(Socket socket) { this.socket = socket; }
+
+        public ClientHandler(Socket socket) {
+            this.socket = socket;
+        }
 
         @Override
         public void run() {
@@ -141,10 +137,16 @@ public class JamManager {
                 while ((line = reader.readLine()) != null) {
                     // If clients can send commands back to host, handle them here
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
         }
     }
 
-    public boolean isConnected() { return isConnected; }
-    public boolean isHost() { return isHost; }
+    public boolean isConnected() {
+        return isConnected;
+    }
+
+    public boolean isHost() {
+        return isHost;
+    }
 }

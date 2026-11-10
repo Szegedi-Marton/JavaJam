@@ -5,6 +5,7 @@ import model.Music;
 import javax.swing.*;
 import javax.swing.event.ListDataEvent;
 import java.awt.*;
+
 import javafx.application.Platform;
 import com.sun.net.httpserver.HttpServer;
 
@@ -48,13 +49,11 @@ public class MusicView extends JFrame {
     private JLabel durationLabel;
     private JLabel nowPlayingLabel;
 
-
-    // Top Nav Components
     private JButton settingsButton;
     private JTextField searchField;
     private JButton profileButton;
 
-    // Bottom Playback Components
+
     private JButton prevButton;
     private JButton stopButton;
     private JButton nextButton;
@@ -62,10 +61,10 @@ public class MusicView extends JFrame {
     private JButton jamButton;
     private JSlider volumeSlider;
     private Timer progressTimer;
+    private boolean playerPageLoaded = false;
 
 
     private CefMessageRouterHandler progressHandler;
-
 
 
     private HttpServer playerServer;
@@ -77,21 +76,18 @@ public class MusicView extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
-        // ==========================================
-        // DARK THEME COLORS
-        // ==========================================
+
+        //Colors
         Color bgDark = new Color(0, 0, 0);       // Dark charcoal background
         Color panelDark = new Color(0, 0, 0);    // Slightly lighter dark for panels
         Color textLight = new Color(220, 220, 220); // Off-white text
         Color buttonDark = new Color(85, 85, 85);   // Button background
         Color accentColor = new Color(75, 110, 175);
 
-        // Apply dark background to the main content pane
         getContentPane().setBackground(bgDark);
 
-        // ==========================================
-        // 1. TOP NAV BAR (North)
-        // ==========================================
+
+        //TOP NAV
         JPanel topNavPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         topNavPanel.setBackground(panelDark);
 
@@ -152,9 +148,8 @@ public class MusicView extends JFrame {
 
         add(topNavPanel, BorderLayout.NORTH);
 
-        // ==========================================
-        // 2. MAIN LIST VIEW & WEB PLAYER (Center)
-        // ==========================================
+
+        //List view n Web player
         listModel = new DefaultListModel<>();
         musicListUI = new JList<>(listModel);
         musicListUI.setBackground(bgDark);
@@ -183,19 +178,16 @@ public class MusicView extends JFrame {
             }
         });
 
-        // Initialize JavaFX Panel for the YouTube player
         browserPanel = new JPanel(new BorderLayout());
         browserPanel.setBackground(Color.BLACK);
 
         startPlayerServer();
         initCefPlayer();
 
-        // Create a sub-panel for the right side holding both details text and the media player
         JPanel rightContainer = new JPanel(new BorderLayout());
         rightContainer.add(browserPanel, BorderLayout.CENTER);
         rightContainer.setBackground(bgDark);
 
-        // Split pane to keep list on left and rightContainer on the right
         JSplitPane splitPane = new JSplitPane(
                 JSplitPane.HORIZONTAL_SPLIT,
                 new JScrollPane(musicListUI),
@@ -206,26 +198,20 @@ public class MusicView extends JFrame {
         add(splitPane, BorderLayout.CENTER);
 
 
-// ==========================================
-// 3. BOTTOM MUSIC PLAYER (South)
-// ==========================================
-
+        //BOTTOM MUSIC PLAYER
         JPanel bottomBar = new JPanel(new BorderLayout(10, 5));
         bottomBar.setBackground(panelDark);
         bottomBar.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
 
-// NOW PLAYING TITLE
         nowPlayingLabel = new JLabel("Nothing playing");
         nowPlayingLabel.setForeground(textLight);
         nowPlayingLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
         bottomBar.add(nowPlayingLabel, BorderLayout.NORTH);
 
-// CENTER PLAYER CONTROLS
         JPanel controlsPanel = new JPanel(new BorderLayout(10, 5));
         controlsPanel.setBackground(panelDark);
 
-// SEEK BAR
         JPanel seekPanel = new JPanel(new BorderLayout(8, 0));
         seekPanel.setBackground(panelDark);
 
@@ -246,7 +232,6 @@ public class MusicView extends JFrame {
 
         controlsPanel.add(seekPanel, BorderLayout.NORTH);
 
-// BUTTONS
         JPanel buttonsPanel = new JPanel(
                 new FlowLayout(FlowLayout.CENTER, 12, 5)
         );
@@ -258,7 +243,7 @@ public class MusicView extends JFrame {
         stopButton = createStyledButton("■", buttonDark, textLight);
         nextButton = createStyledButton("⏭", buttonDark, textLight);
         repeatButton = createStyledButton("Repeat", buttonDark, textLight);
-        jamButton = createStyledButton("Jam",buttonDark, textLight);
+        jamButton = createStyledButton("Jam", buttonDark, textLight);
 
         buttonsPanel.add(shuffleButton);
         buttonsPanel.add(prevButton);
@@ -272,7 +257,6 @@ public class MusicView extends JFrame {
 
         bottomBar.add(controlsPanel, BorderLayout.CENTER);
 
-// VOLUME
         JPanel volumePanel = new JPanel(
                 new FlowLayout(FlowLayout.CENTER, 8, 0)
         );
@@ -292,16 +276,13 @@ public class MusicView extends JFrame {
 
         add(bottomBar, BorderLayout.SOUTH);
 
-
         getStopButton().addActionListener(e -> stopVideo());
-
         getVolumeSlider().addChangeListener(e ->
                 setPlayerVolume(getVolumeSlider().getValue())
         );
 
-        // ==========================================
-        // 4. LIST DATA LISTENER
-        // ==========================================
+
+        //DATA LISTENER
         listModel.addListDataListener(new javax.swing.event.ListDataListener() {
             @Override
             public void intervalAdded(ListDataEvent e) {
@@ -329,7 +310,6 @@ public class MusicView extends JFrame {
         });
     }
 
-    // Helper method to create consistently styled dark buttons
     private JButton createStyledButton(String text, Color bg, Color fg) {
         JButton button = new JButton(text);
         button.setBackground(bg);
@@ -338,135 +318,131 @@ public class MusicView extends JFrame {
         return button;
     }
 
-
     private void initCefPlayer() {
-
         Thread cefThread = new Thread(() -> {
+        try {
+            CefAppBuilder builder = new CefAppBuilder();
 
-            try {
-                CefAppBuilder builder = new CefAppBuilder();
+            builder.setInstallDir(
+                    new java.io.File("jcef-bundle")
+            );
 
-                builder.setInstallDir(
-                        new java.io.File("jcef-bundle")
+            builder.setProgressHandler(
+                    new ConsoleProgressHandler()
+            );
+
+            builder.getCefSettings()
+                    .windowless_rendering_enabled = false;
+
+            cefApp = builder.build();
+
+            cefClient = cefApp.createClient();
+
+            //Create browser
+            cefBrowser = cefClient.createBrowser(
+                    "about:blank",
+                    false,
+                    false
+            );
+
+            //Create message router
+            messageRouter = CefMessageRouter.create(
+                    new CefMessageRouter.CefMessageRouterConfig(
+                            "cefQuery",
+                            "cefQueryCancel"
+                    )
+            );
+
+            if (messageRouter == null) {
+                throw new IllegalStateException(
+                        "Failed to create CefMessageRouter"
                 );
-
-                builder.setProgressHandler(
-                        new ConsoleProgressHandler()
-                );
-
-                builder.getCefSettings()
-                        .windowless_rendering_enabled = false;
-
-                cefApp = builder.build();
-
-                cefClient = cefApp.createClient();
-
-                // Create browser
-                cefBrowser = cefClient.createBrowser(
-                        "about:blank",
-                        false,
-                        false
-                );
-
-                // Create message router
-                messageRouter = CefMessageRouter.create(
-                        new CefMessageRouter.CefMessageRouterConfig(
-                                "cefQuery",
-                                "cefQueryCancel"
-                        )
-                );
-
-                if (messageRouter == null) {
-                    throw new IllegalStateException(
-                            "Failed to create CefMessageRouter"
-                    );
-                }
-
-
-                progressHandler = new CefMessageRouterHandler() {
-
-                    @Override
-                    public void setNativeRef(String identifer, long nativeRef) {
-
-                    }
-
-                    @Override
-                    public long getNativeRef(String identifer) {
-                        return 0;
-                    }
-
-                    @Override
-                    public boolean onQuery(
-                            CefBrowser browser,
-                            CefFrame frame,
-                            long queryId,
-                            String request,
-                            boolean persistent,
-                            CefQueryCallback callback) {
-
-                        System.out.println("[JCEF QUERY] " + request);
-
-                        try {
-                            org.json.JSONObject json =
-                                    new org.json.JSONObject(request);
-
-                            if ("progress".equals(json.optString("type"))) {
-
-                                double current = json.getDouble("current");
-                                double duration = json.getDouble("duration");
-
-                                currentVideoTime = current;
-                                videoDuration = duration;
-
-                                System.out.println(
-                                        "[JAVA PROGRESS] " +
-                                                current + " / " + duration
-                                );
-                            }
-
-                            callback.success("OK");
-                            return true;
-
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                            callback.failure(1, e.getMessage());
-                            return true;
-                        }
-                    }
-
-                    @Override
-                    public void onQueryCanceled(
-                            CefBrowser browser,
-                            CefFrame frame,
-                            long queryId) {
-
-                        System.out.println("[JCEF] Query canceled: " + queryId);
-                    }
-                };
-
-                messageRouter.addHandler(progressHandler, true);
-
-                cefClient.addMessageRouter(messageRouter);
-
-                System.out.println("[JCEF] Message router initialized");
-
-                SwingUtilities.invokeLater(() -> {
-
-                    browserPanel.add(
-                            cefBrowser.getUIComponent(),
-                            BorderLayout.CENTER
-                    );
-
-                    browserPanel.revalidate();
-                    browserPanel.repaint();
-
-                });
-
-            } catch (Throwable e) {
-                e.printStackTrace();
             }
 
-        }, "JCEF-Initialization");
+
+            progressHandler = new CefMessageRouterHandler() {
+
+                @Override
+                public void setNativeRef(String identifer, long nativeRef) {
+
+                }
+
+                @Override
+                public long getNativeRef(String identifer) {
+                    return 0;
+                }
+
+                @Override
+                public boolean onQuery(
+                        CefBrowser browser,
+                        CefFrame frame,
+                        long queryId,
+                        String request,
+                        boolean persistent,
+                        CefQueryCallback callback) {
+
+                    System.out.println("[JCEF QUERY] " + request);
+
+                    try {
+                        org.json.JSONObject json =
+                                new org.json.JSONObject(request);
+
+                        if ("progress".equals(json.optString("type"))) {
+
+                            double current = json.getDouble("current");
+                            double duration = json.getDouble("duration");
+
+                            currentVideoTime = current;
+                            videoDuration = duration;
+
+                            System.out.println(
+                                    "[JAVA PROGRESS] " +
+                                            current + " / " + duration
+                            );
+                        }
+
+                        callback.success("OK");
+                        return true;
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        callback.failure(1, e.getMessage());
+                        return true;
+                    }
+                }
+
+                @Override
+                public void onQueryCanceled(
+                        CefBrowser browser,
+                        CefFrame frame,
+                        long queryId) {
+
+                    System.out.println("[JCEF] Query canceled: " + queryId);
+                }
+            };
+
+            messageRouter.addHandler(progressHandler, true);
+
+            cefClient.addMessageRouter(messageRouter);
+
+            System.out.println("[JCEF] Message router initialized");
+
+            SwingUtilities.invokeLater(() -> {
+
+                browserPanel.add(
+                        cefBrowser.getUIComponent(),
+                        BorderLayout.CENTER
+                );
+
+                browserPanel.revalidate();
+                browserPanel.repaint();
+
+            });
+
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+    }, "JCEF-Initialization");
 
         cefThread.start();
     }
@@ -493,316 +469,292 @@ public class MusicView extends JFrame {
                 String origin = "http://127.0.0.1:" + playerServerPort;
 
                 String html = """
-            <!DOCTYPE html>
-            <html>
-            <head>
+                <!DOCTYPE html>
+                <html>
+                <head>
                 <meta charset="UTF-8">
                 <meta name="referrer" content="strict-origin-when-cross-origin">
                 <style>
                    html, body {
-                                     margin: 0;
-                                     padding: 0;
-                                     width: 100%;
-                                     height: 100%;
-                                     background: #000;
-                                     overflow: hidden;
-                                 }
-                        
-                                 #player {
-                                     position: absolute;
-                                     inset: 0;
-                                     width: 100%;
-                                     height: 100%;
-                                 }
-                        
-                                 #player iframe {
-                                     width: 100% !important;
-                                     height: 100% !important;
-                                     border: 0;
-                                 }
+                     margin: 0;
+                     padding: 0;
+                     width: 100%;
+                     height: 100%;
+                     background: #000;
+                     overflow: hidden;
+                     }
+                     
+                    #player {
+                     position: absolute;
+                     inset: 0;
+                     width: 100%;
+                     height: 100%;
+                     }  
+                         
+                    #player iframe {
+                     width: 100% !important;
+                     height: 100% !important;
+                     border: 0;
+                     }
                 </style>
-            </head>
-            <body>
+                </head>
+                <body>
+                
+                <div id="player"></div>
+                
+                <script>
+                window.player = null;
+                window.isReady = false;
+                window.repeatEnabled = false;
+                window.pendingVideoId = 'VIDEO_ID';
+                window.pendingCommands = [];
 
-            <div id="player"></div>
+                function debug(message) {
+                    console.log("[JS] " + message);
+                }
 
-            <script>
-                        
-                        
-                                        window.player = null;
-                                        window.isReady = false;
-                                        window.repeatEnabled = false;
-                                        window.pendingVideoId = 'VIDEO_ID';
-                                        window.pendingCommands = [];
-                        
-                                        function debug(message) {
-                                            console.log("[JS] " + message);
-                                        }
-                        
-                                        // =====================================
-                                        // PLAYER READY CHECK
-                                        // =====================================
-                        
-                                        window.isPlayerReady = function() {
-                                            return window.isReady &&
-                                                   window.player !== null;
-                                        };
-                        
-                                        // =====================================
-                                        // LOAD YOUTUBE API
-                                        // =====================================
-                        
-                                        var tag = document.createElement('script');
-                                        tag.src = "https://www.youtube.com/iframe_api";
-                        
-                                        document.head.appendChild(tag);
-                        
-                                        window.onYouTubeIframeAPIReady = function() {
-                        
-                                            debug("YouTube API loaded");
-                        
-                                            window.player = new YT.Player('player', {
-                        
-                                                width: '100%',
-                                                height: '100%',
-                        
-                                                videoId: window.pendingVideoId,
-                        
-                                                playerVars: {
-                                                    autoplay: 1,
-                                                    controls: 0,
-                                                    disablekb: 1,
-                                                    playsinline: 1,
-                                                    enablejsapi: 1,
-                                                    origin: 'ORIGIN'
-                                                },
-                        
-                                                events: {
-                        
-                                                    onReady: function(event) {
-                        
-                                                        window.isReady = true;
-                        
-                                                        debug("Player READY");
-                        
-                                                        while (window.pendingCommands.length > 0) {
-                                                            window.pendingCommands.shift()();
-                                                        }
-                                                    },
-                        
-                                                    onStateChange: function(event) {
-                        
-                                                        var states = {
-                                                            "-1": "UNSTARTED",
-                                                            "0": "ENDED",
-                                                            "1": "PLAYING",
-                                                            "2": "PAUSED",
-                                                            "3": "BUFFERING",
-                                                            "5": "CUED"
-                                                        };
-                        
-                                                        debug("Player state: " + states[event.data]);
-                        
-                                                        if (event.data === YT.PlayerState.BUFFERING) {
-                                                            debug("Started buffering");
-                                                        }
-                        
-                                                        if (event.data === YT.PlayerState.PLAYING) {
-                                                            debug("Playback resumed at: " +
-                                                                window.player.getCurrentTime());
-                                                        }
-                        
-                                                        if (event.data === YT.PlayerState.PAUSED) {
-                                                            debug("Player paused");
-                                                        }
-                        
-                                                        if (event.data === YT.PlayerState.ENDED &&
-                                                            window.repeatEnabled) {
-                        
-                                                            debug("Repeating video");
-                                                            window.player.playVideo();
-                                                        }
-                                                    },
-                        
-                                                    onError: function(event) {
-                                                        console.error("[ERROR] YouTube error:", event.data);
-                                                    }
-                                                }
-                                            });
-                                        };
-                        
-                                        // =====================================
-                                        // COMMAND QUEUE
-                                        // =====================================
-                        
-                                        function executeWhenReady(callback) {
-                        
-                                            if (window.isPlayerReady()) {
-                                                callback();
-                                            } else {
-                                                window.pendingCommands.push(callback);
-                                            }
-                                        }
-                        
-                                        // =====================================
-                                        // VIDEO CONTROLS
-                                        // =====================================
-                        
-                                        window.loadNewVideo = function(videoId) {
-                        
-                                            if (!window.isPlayerReady()) {
-                                                window.pendingVideoId = videoId;
-                                                return;
-                                            }
-                        
-                                            window.pendingVideoId = videoId;
-                        
-                                            debug("Loading video: " + videoId);
-                        
-                                            window.player.loadVideoById({
-                                                videoId: videoId,
-                                                startSeconds: 0
-                                            });
-                                        };
-                        
-                                        window.playVideo = function() {
-                                            executeWhenReady(function() {
-                                                debug("Play requested");
-                                                window.player.playVideo();
-                                            });
-                                        };
-                        
-                                        window.pauseVideo = function() {
-                                            executeWhenReady(function() {
-                                                debug("Pause requested");
-                                                window.player.pauseVideo();
-                                            });
-                                        };
-                        
-                                        window.stopVideo = function() {
-                                            executeWhenReady(function() {
-                                                debug("Stop requested");
-                                                window.player.stopVideo();
-                                            });
-                                        };
-                        
-                                        // =====================================
-                                        // PLAYBACK INFORMATION TO JAVA
-                                        // =====================================
-                        
-                                        window.lastProgress = {
-                                                                current: 0,
-                                                                duration: 0
-                                                            };
-                        
-                                                            setInterval(function() {
-                        
-                                                                if (!window.isPlayerReady()) return;
-                        
-                                                                const current = window.player.getCurrentTime();
-                                                                const duration = window.player.getDuration();
-                        
-                                                                if (duration <= 0) return;
-                        
-                                                                window.lastProgress.current = current;
-                                                                window.lastProgress.duration = duration;
-                        
-                                                                if (typeof window.cefQuery !== "function") {
-                                                                    console.error("[JCEF] cefQuery is unavailable");
-                                                                    return;
-                                                                }
-                        
-                                                                window.cefQuery({
-                                                                    request: JSON.stringify({
-                                                                        type: "progress",
-                                                                        current: current,
-                                                                        duration: duration
-                                                                    }),
-                        
-                                                                    persistent: false,
-                        
-                                                                    onSuccess: function(response) {
-                                                                        console.log("[JCEF] Progress received by Java");
-                                                                    },
-                        
-                                                                    onFailure: function(code, message) {
-                                                                        console.error("[JCEF] Query failed:", code, message);
-                                                                    }
-                                                                });
-                        
-                                                            }, 500);
-                        
-                                        // =====================================
-                                        // SEEK
-                                        // =====================================
-                        
-                                        window.seekVideo = function(seconds) {
-                        
-                                            if (!window.isPlayerReady()) {
-                                                debug("Player not ready");
-                                                return;
-                                            }
-                        
-                                            const duration = window.player.getDuration();
-                        
-                                            if (!duration || duration <= 0) {
-                                                debug("Invalid duration");
-                                                return;
-                                            }
-                        
-                                            const target = Math.max(
-                                                0,
-                                                Math.min(Number(seconds), duration)
-                                            );
-                        
-                                            debug("Seeking to: " + target);
-                        
-                                            window.player.seekTo(target, true);
-                        
-                                            debug("Current time after seek: " +
-                                                window.player.getCurrentTime());
-                                        };
-                        
-                                        // =====================================
-                                        // VOLUME AND REPEAT
-                                        // =====================================
-                        
-                                        window.setVolume = function(value) {
-                        
-                                            executeWhenReady(function() {
-                                                window.player.setVolume(value);
-                                            });
-                                        };
-                        
-                                        window.setRepeatEnabled = function(enabled) {
-                                            window.repeatEnabled = enabled;
-                                            debug("Repeat: " + enabled);
-                                        };
-                        
-                                        // =====================================
-                                        // TIME INFORMATION
-                                        // =====================================
-                        
-                                        window.getCurrentTime = function() {
-                        
-                                            if (!window.isPlayerReady()) return 0;
-                        
-                                            return window.player.getCurrentTime();
-                                        };
-                        
-                                        window.getDuration = function() {
-                        
-                                            if (!window.isPlayerReady()) return 0;
-                        
-                                            return window.player.getDuration();
-                                        };
-                        
-                        
-            </script>
+                //
+                //PLAYER READY CHECK
+                //
+                window.isPlayerReady = function() {
+                    return window.isReady &&
+                           window.player !== null;
+                };
+                
+                //
+                // LOAD YOUTUBE API
+                //
+                var tag = document.createElement('script');
+                tag.src = "https://www.youtube.com/iframe_api";
 
-            </body>
-            </html>
-            """;
+                document.head.appendChild(tag);
+
+                window.onYouTubeIframeAPIReady = function() {
+                debug("YouTube API loaded");
+
+                window.player = new YT.Player('player', {
+                    width: '100%',
+                    height: '100%',
+                    videoId: window.pendingVideoId,
+
+                    playerVars: {
+                        autoplay: 1,
+                        controls: 0,
+                        disablekb: 1,
+                        playsinline: 1,
+                        enablejsapi: 1,
+                        origin: 'ORIGIN'
+                    },
+
+                    events: {
+                    onReady: function(event) {
+                        window.isReady = true;
+
+                        debug("Player READY");
+
+                        while (window.pendingCommands.length > 0) {
+                            window.pendingCommands.shift()();
+                        }
+                    },
+                    onStateChange: function(event) {
+                        var states = {
+                            "-1": "UNSTARTED",
+                            "0": "ENDED",
+                            "1": "PLAYING",
+                            "2": "PAUSED",
+                            "3": "BUFFERING",
+                            "5": "CUED"
+                        };
+
+                        debug("Player state: " + states[event.data]);
+
+                        if (event.data === YT.PlayerState.BUFFERING) {
+                            debug("Started buffering");
+                        }
+
+                        if (event.data === YT.PlayerState.PLAYING) {
+                            debug("Playback resumed at: " +
+                                window.player.getCurrentTime());
+                        }
+
+                        if (event.data === YT.PlayerState.PAUSED) {
+                            debug("Player paused");
+                        }
+
+                        if (event.data === YT.PlayerState.ENDED &&
+                            window.repeatEnabled) {
+
+                            debug("Repeating video");
+                            window.player.playVideo();
+                        }
+                    },
+                    onError: function(event) {
+                        console.error("[ERROR] YouTube error:", event.data);
+                    }
+                    }
+                });
+                };
+
+                //
+                //COMMAND QUEUE
+                //
+                function executeWhenReady(callback) {
+
+                    if (window.isPlayerReady()) {
+                        callback();
+                    } else {
+                        window.pendingCommands.push(callback);
+                    }
+                }
+
+                //
+                //VIDEO CONTROLS
+                //
+                window.loadNewVideo = function(videoId) {
+
+                    if (!window.isPlayerReady()) {
+                        window.pendingVideoId = videoId;
+                        return;
+                    }
+
+                    window.pendingVideoId = videoId;
+
+                    debug("Loading video: " + videoId);
+
+                    window.player.loadVideoById({
+                        videoId: videoId,
+                        startSeconds: 0
+                    });
+                };
+
+                window.playVideo = function() {
+                    executeWhenReady(function() {
+                        debug("Play requested");
+                        window.player.playVideo();
+                    });
+                };
+
+                window.pauseVideo = function() {
+                    executeWhenReady(function() {
+                        debug("Pause requested");
+                        window.player.pauseVideo();
+                    });
+                };
+
+                window.stopVideo = function() {
+                    executeWhenReady(function() {
+                        debug("Stop requested");
+                        window.player.stopVideo();
+                    });
+                };
+
+                //
+                // PLAYBACK INFORMATION TO JAVA
+                //
+                window.lastProgress = {
+                    current: 0,
+                    duration: 0
+                };
+
+                setInterval(function() {
+                    if (!window.isPlayerReady()) return;
+
+                    const current = window.player.getCurrentTime();
+                    const duration = window.player.getDuration();
+
+                    if (duration <= 0) return;
+
+                    window.lastProgress.current = current;
+                    window.lastProgress.duration = duration;
+
+                    if (typeof window.cefQuery !== "function") {
+                        console.error("[JCEF] cefQuery is unavailable");
+                        return;
+                    }
+
+                    window.cefQuery({
+                        request: JSON.stringify({
+                            type: "progress",
+                            current: current,
+                            duration: duration
+                        }),
+
+                        persistent: false,
+
+                        onSuccess: function(response) {
+                            console.log("[JCEF] Progress received by Java");
+                        },
+
+                        onFailure: function(code, message) {
+                            console.error("[JCEF] Query failed:", code, message);
+                        }
+                    });
+                }, 500);
+
+                //
+                // SEEK
+                //
+                window.seekVideo = function(seconds) {
+                    if (!window.isPlayerReady()) {
+                        debug("Player not ready");
+                        return;
+                    }
+
+                    const duration = window.player.getDuration();
+
+                    if (!duration || duration <= 0) {
+                        debug("Invalid duration");
+                        return;
+                    }
+
+                    const target = Math.max(
+                        0,
+                        Math.min(Number(seconds), duration)
+                    );
+
+                    debug("Seeking to: " + target);
+
+                    window.player.seekTo(target, true);
+
+                    debug("Current time after seek: " +
+                        window.player.getCurrentTime());
+                };
+
+                //
+                //VOLUME AND REPEAT
+                //
+                window.setVolume = function(value) {
+
+                    executeWhenReady(function() {
+                        window.player.setVolume(value);
+                    });
+                };
+
+                window.setRepeatEnabled = function(enabled) {
+                    window.repeatEnabled = enabled;
+                    debug("Repeat: " + enabled);
+                };
+
+                //
+                //TIME INFORMATION
+                //
+                window.getCurrentTime = function() {
+
+                    if (!window.isPlayerReady()) return 0;
+
+                    return window.player.getCurrentTime();
+                };
+
+                window.getDuration = function() {
+
+                    if (!window.isPlayerReady()) return 0;
+
+                    return window.player.getDuration();
+                };
+                </script>
+                </body>
+                </html>
+                """;
 
                 html = html.replace("VIDEO_ID", videoId)
                         .replace("ORIGIN", origin);
@@ -850,6 +802,10 @@ public class MusicView extends JFrame {
         executePlayerCommand("setVolume(" + safeVolume + ")");
     }
 
+    public void setRepeatEnabledInJs(boolean enabled) {
+        executePlayerCommand("setRepeatEnabled(" + enabled + ")");
+    }
+
     private void executePlayerCommand(String javascript) {
 
         if (cefBrowser == null) {
@@ -887,8 +843,6 @@ public class MusicView extends JFrame {
         }
     }
 
-    private boolean playerPageLoaded = false;
-
     public void loadVideoInApp(String videoId) {
 
         if (videoId == null ||
@@ -924,71 +878,91 @@ public class MusicView extends JFrame {
     }
 
     private void enableGlobalSearchTyping() {
+    KeyboardFocusManager.getCurrentKeyboardFocusManager()
+        .addKeyEventDispatcher(event -> {
 
-        KeyboardFocusManager.getCurrentKeyboardFocusManager()
-                .addKeyEventDispatcher(event -> {
+            if (event.getID() != KeyEvent.KEY_PRESSED) {
+                return false;
+            }
 
-                    // Only handle key presses
-                    if (event.getID() != KeyEvent.KEY_PRESSED) {
-                        return false;
-                    }
+            if (event.isControlDown() ||
+                    event.isAltDown() ||
+                    event.isMetaDown()) {
+                return false;
+            }
 
-                    // Ignore shortcuts such as Ctrl+C, Ctrl+V, Alt+Tab
-                    if (event.isControlDown() ||
-                            event.isAltDown() ||
-                            event.isMetaDown()) {
-                        return false;
-                    }
+            if (event.getKeyCode() == KeyEvent.VK_ESCAPE ||
+                    event.getKeyCode() == KeyEvent.VK_ENTER ||
+                    event.getKeyCode() == KeyEvent.VK_TAB ||
+                    event.getKeyCode() == KeyEvent.VK_BACK_SPACE ||
+                    event.getKeyCode() == KeyEvent.VK_DELETE) {
+                return false;
+            }
 
-                    // Ignore special keys
-                    if (event.getKeyCode() == KeyEvent.VK_ESCAPE ||
-                            event.getKeyCode() == KeyEvent.VK_ENTER ||
-                            event.getKeyCode() == KeyEvent.VK_TAB ||
-                            event.getKeyCode() == KeyEvent.VK_BACK_SPACE ||
-                            event.getKeyCode() == KeyEvent.VK_DELETE) {
-                        return false;
-                    }
+            if (!isActive()) {
+                return false;
+            }
 
-                    // Only process keys when this window is active
-                    if (!isActive()) {
-                        return false;
-                    }
+            char c = event.getKeyChar();
 
-                    char c = event.getKeyChar();
+            if (!Character.isLetterOrDigit(c) &&
+                    !Character.isWhitespace(c) &&
+                    !Character.isDefined(c)) {
+                return false;
+            }
 
-                    if (!Character.isLetterOrDigit(c) &&
-                            !Character.isWhitespace(c) &&
-                            !Character.isDefined(c)) {
-                        return false;
-                    }
-
-                    // Redirect focus to search field
-                    if (!searchField.isFocusOwner()) {
-                        searchField.requestFocusInWindow();
-                    }
-
-                    return false;
-                });
+            if (!searchField.isFocusOwner()) {
+                searchField.requestFocusInWindow();
+            }
+            return false;
+        });
     }
 
 
+    // GETTERS
+    public JButton getSettingsButton() {
+        return settingsButton;
+    }
 
-    // ==========================================
-    // GETTERS FOR CONTROLLER WIRING
-    // ==========================================
-    public JButton getSettingsButton() { return settingsButton; }
-    public JTextField getSearchField() { return searchField; }
-    public JButton getProfileButton() { return profileButton; }
+    public JTextField getSearchField() {
+        return searchField;
+    }
 
-    public JButton getPrevButton() { return prevButton; }
-    public JButton getStopButton() { return stopButton; }
-    public JButton getNextButton() { return nextButton; }
-    public JButton getShuffleButton() { return shuffleButton; }
-    public JButton getJamButton() { return jamButton; }
-    public JSlider getVolumeSlider() { return volumeSlider; }
+    public JButton getProfileButton() {
+        return profileButton;
+    }
 
-    public JList<Music> getMusicListUI() { return musicListUI; }
-    public DefaultListModel<Music> getListModel() { return listModel; }
+    public JButton getPrevButton() {
+        return prevButton;
+    }
+
+    public JButton getStopButton() {
+        return stopButton;
+    }
+
+    public JButton getNextButton() {
+        return nextButton;
+    }
+
+    public JButton getShuffleButton() {
+        return shuffleButton;
+    }
+
+    public JButton getJamButton() {
+        return jamButton;
+    }
+
+    public JSlider getVolumeSlider() {
+        return volumeSlider;
+    }
+
+    public JList<Music> getMusicListUI() {
+        return musicListUI;
+    }
+
+    public DefaultListModel<Music> getListModel() {
+        return listModel;
+    }
 
     public JButton getPlayPauseButton() {
         return playPauseButton;
@@ -997,8 +971,6 @@ public class MusicView extends JFrame {
     public JButton getRepeatButton() {
         return repeatButton;
     }
-
-
 
     public JSlider getSeekSlider() {
         return seekSlider;
@@ -1012,7 +984,6 @@ public class MusicView extends JFrame {
         return videoDuration;
     }
 
-
     public void setNowPlaying(String name) {
         SwingUtilities.invokeLater(() ->
                 nowPlayingLabel.setText(name)
@@ -1025,9 +996,5 @@ public class MusicView extends JFrame {
 
     public JLabel getDurationLabel() {
         return durationLabel;
-    }
-
-    public void setRepeatEnabledInJs(boolean enabled) {
-        executePlayerCommand("setRepeatEnabled(" + enabled + ")");
     }
 }
