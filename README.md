@@ -41,7 +41,7 @@ JavaJam is a Java desktop music player that combines YouTube playback with share
 
 **1. Clone the repository**
 
-    git clone https://github.com/Szegedi-Marton/JavaJam.git
+    git clone https://github.com/szmartin16/JavaJam.git
 
 **2. Navigate to the project**
 
