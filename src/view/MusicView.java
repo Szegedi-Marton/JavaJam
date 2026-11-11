@@ -35,8 +35,8 @@ public class MusicView extends JFrame {
 
 
     public MusicView() {
-        setTitle("Music Dashboard - Dark Mode");
-        setSize(900, 600);
+        setTitle("JavaJam");
+        setSize(1200, 800);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
@@ -45,7 +45,7 @@ public class MusicView extends JFrame {
         Color bgDark = new Color(0, 0, 0);       //background
         Color panelDark = new Color(0, 0, 0);
         Color textLight = new Color(220, 220, 220); //white text
-        Color buttonDark = new Color(85, 85, 85);   //button background
+        Color buttonDark = new Color(30, 30, 30);   //button background
         Color accentColor = new Color(75, 110, 175);
 
         getContentPane().setBackground(bgDark);
