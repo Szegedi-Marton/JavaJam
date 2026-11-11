@@ -78,10 +78,19 @@ JavaJam lets you share your listening experience with friends.
 5. Connect and enjoy the music together!
 
 ## 📸 Screenshots
+<div align="center">
 
-Coming soon!
+  <img width="100%" alt="First screenshot" src="https://github.com/user-attachments/assets/ed4fe3ee-169b-43ed-8c1a-68005194cb60" />
+  
+  <sub>UI and application preview</sub>
 
-<!-- Add screenshots here -->
+  <br /><br />
+
+  <img width="100%" alt="Second screenshot" src="https://github.com/user-attachments/assets/3baea2a5-92ee-49e2-b6ac-559e45897774" />
+  
+  <sub>Primitive launching UI</sub>
+
+</div>
 
 ## 🗺️ Roadmap
 
