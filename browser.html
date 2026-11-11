@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+        }
+
+        #player {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #player iframe {
+            width: 100% !important;
+            height: 100% !important;
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div id="player"></div>
+
+<script>
+    window.player = null;
+    window.isReady = false;
+    window.repeatEnabled = false;
+    window.pendingVideoId = 'Mmw-PpWhKFg';
+    window.pendingCommands = [];
+
+    function debug(message) {
+        console.log("[JS] " + message);
+    }
+
+    //
+    //PLAYER READY CHECK
+    //
+    window.isPlayerReady = function() {
+        return window.isReady &&
+            window.player !== null;
+    };
+
+    //
+    // LOAD YOUTUBE API
+    //
+    var tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+
+    document.head.appendChild(tag);
+
+    window.onYouTubeIframeAPIReady = function() {
+        debug("YouTube API loaded");
+
+        window.player = new YT.Player('player', {
+            width: '100%',
+            height: '100%',
+            videoId: window.pendingVideoId,
+
+            playerVars: {
+                autoplay: 1,
+                controls: 0,
+                disablekb: 1,
+                playsinline: 1,
+                enablejsapi: 1,
+                //origin: 'ORIGIN'
+            },
+
+            events: {
+                onReady: function(event) {
+                    window.isReady = true;
+
+                    debug("Player READY");
+
+                    while (window.pendingCommands.length > 0) {
+                        window.pendingCommands.shift()();
+                    }
+                },
+                onStateChange: function(event) {
+                    var states = {
+                        "-1": "UNSTARTED",
+                        "0": "ENDED",
+                        "1": "PLAYING",
+                        "2": "PAUSED",
+                        "3": "BUFFERING",
+                        "5": "CUED"
+                    };
+
+                    debug("Player state: " + states[event.data]);
+
+                    if (event.data === YT.PlayerState.BUFFERING) {
+                        debug("Started buffering");
+                    }
+
+                    if (event.data === YT.PlayerState.PLAYING) {
+                        debug("Playback resumed at: " +
+                            window.player.getCurrentTime());
+                    }
+
+                    if (event.data === YT.PlayerState.PAUSED) {
+                        debug("Player paused");
+                    }
+
+                    if (event.data === YT.PlayerState.ENDED &&
+                        window.repeatEnabled) {
+
+                        debug("Repeating video");
+                        window.player.playVideo();
+                    }
+                },
+                onError: function(event) {
+                    console.error("[ERROR] YouTube error:", event.data);
+                }
+            }
+        });
+    };
+
+    //
+    //COMMAND QUEUE
+    //
+    function executeWhenReady(callback) {
+
+        if (window.isPlayerReady()) {
+            callback();
+        } else {
+            window.pendingCommands.push(callback);
+        }
+    }
+
+    //
+    //VIDEO CONTROLS
+    //
+    window.loadNewVideo = function(videoId) {
+
+        if (!window.isPlayerReady()) {
+            window.pendingVideoId = videoId;
+            return;
+        }
+
+        window.pendingVideoId = videoId;
+
+        debug("Loading video: " + videoId);
+
+        window.player.loadVideoById({
+            videoId: videoId,
+            startSeconds: 0
+        });
+    };
+
+    window.playVideo = function() {
+        executeWhenReady(function() {
+            debug("Play requested");
+            window.player.playVideo();
+        });
+    };
+
+    window.pauseVideo = function() {
+        executeWhenReady(function() {
+            debug("Pause requested");
+            window.player.pauseVideo();
+        });
+    };
+
+    window.stopVideo = function() {
+        executeWhenReady(function() {
+            debug("Stop requested");
+            window.player.stopVideo();
+        });
+    };
+
+    //
+    // PLAYBACK INFORMATION TO JAVA
+    //
+    window.lastProgress = {
+        current: 0,
+        duration: 0
+    };
+
+    setInterval(function() {
+        if (!window.isPlayerReady()) return;
+
+        const current = window.player.getCurrentTime();
+        const duration = window.player.getDuration();
+
+        if (duration <= 0) return;
+
+        window.lastProgress.current = current;
+        window.lastProgress.duration = duration;
+
+        if (typeof window.cefQuery !== "function") {
+            console.error("[JCEF] cefQuery is unavailable");
+            return;
+        }
+
+        window.cefQuery({
+            request: JSON.stringify({
+                type: "progress",
+                current: current,
+                duration: duration
+            }),
+
+            persistent: false,
+
+            onSuccess: function(response) {
+                console.log("[JCEF] Progress received by Java");
+            },
+
+            onFailure: function(code, message) {
+                console.error("[JCEF] Query failed:", code, message);
+            }
+        });
+    }, 500);
+
+    //
+    // SEEK
+    //
+    window.seekVideo = function(seconds) {
+        if (!window.isPlayerReady()) {
+            debug("Player not ready");
+            return;
+        }
+
+        const duration = window.player.getDuration();
+
+        if (!duration || duration <= 0) {
+            debug("Invalid duration");
+            return;
+        }
+
+        const target = Math.max(
+            0,
+            Math.min(Number(seconds), duration)
+        );
+
+        debug("Seeking to: " + target);
+
+        window.player.seekTo(target, true);
+
+        debug("Current time after seek: " +
+            window.player.getCurrentTime());
+    };
+
+    //
+    //VOLUME AND REPEAT
+    //
+    window.setVolume = function(value) {
+
+        executeWhenReady(function() {
+            window.player.setVolume(value);
+        });
+    };
+
+    window.setRepeatEnabled = function(enabled) {
+        window.repeatEnabled = enabled;
+        debug("Repeat: " + enabled);
+    };
+
+    //
+    //TIME INFORMATION
+    //
+    window.getCurrentTime = function() {
+
+        if (!window.isPlayerReady()) return 0;
+
+        return window.player.getCurrentTime();
+    };
+
+    window.getDuration = function() {
+
+        if (!window.isPlayerReady()) return 0;
+
+        return window.player.getDuration();
+    };
+</script>
+</body>
+</html>
+""";
