@@ -1,10 +1,9 @@
-package view;
+package com.javaJam.view;
 
-import model.Music;
+import com.javaJam.model.Music;
 import javax.swing.*;
 import javax.swing.event.ListDataEvent;
 import java.awt.*;
-import java.awt.event.*;
 
 
 public class MusicView extends JFrame {
@@ -94,7 +93,7 @@ public class MusicView extends JFrame {
         add(topNavPanel, BorderLayout.NORTH);
 
 
-        //List view n Web player
+        //List com.javaJam.view n Web player
         listModel = new DefaultListModel<>();
         musicListUI = new JList<>(listModel);
         musicListUI.setBackground(bgDark);

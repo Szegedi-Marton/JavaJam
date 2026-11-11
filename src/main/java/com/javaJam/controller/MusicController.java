@@ -1,11 +1,11 @@
-package controller;
+package com.javaJam.controller;
 
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
 import me.friwi.jcefmaven.CefAppBuilder;
 import me.friwi.jcefmaven.impl.progress.ConsoleProgressHandler;
-import model.Music;
-import network.JamManager;
+import com.javaJam.model.Music;
+import com.javaJam.network.JamManager;
 import org.cef.CefApp;
 import org.cef.CefClient;
 import org.cef.CefSettings;
@@ -15,8 +15,8 @@ import org.cef.browser.CefMessageRouter;
 import org.cef.callback.CefQueryCallback;
 import org.cef.handler.CefDisplayHandlerAdapter;
 import org.cef.handler.CefMessageRouterHandler;
-import service.YoutubeScraperService;
-import view.MusicView;
+import com.javaJam.service.YoutubeScraperService;
+import com.javaJam.view.MusicView;
 
 import javax.swing.*;
 import java.awt.*;

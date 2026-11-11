@@ -1,6 +1,6 @@
-package controller;
+package com.javaJam.controller;
 
-import view.MusicView;
+import com.javaJam.view.MusicView;
 
 public class MainController {
 

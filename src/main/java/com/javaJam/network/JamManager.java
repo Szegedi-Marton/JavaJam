@@ -1,7 +1,7 @@
 
-package network;
+package com.javaJam.network;
 
-import controller.MusicController;
+import com.javaJam.controller.MusicController;
 
 import javax.swing.*;
 import java.io.*;

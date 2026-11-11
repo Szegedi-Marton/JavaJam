@@ -1,6 +1,6 @@
-package service;
+package com.javaJam.service;
 
-import model.Music;
+import com.javaJam.model.Music;
 
 import java.net.URI;
 import java.net.URLEncoder;
