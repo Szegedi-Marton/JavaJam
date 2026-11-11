@@ -59,6 +59,7 @@ public class MusicController {
     private double cachedDuration = 0;
     private String currentVideoId = null;
     private String currentTrackName = "Nothing playing";
+    private boolean syncingFromNetwork = false;
 
     public MusicController(MusicView view) {
         this.view = view;
@@ -967,39 +968,52 @@ public class MusicController {
             return;
         }
 
-        // Update track only when it changes.
-        if (!videoId.equals(currentVideoId)) {
+        syncingFromNetwork = true;
 
-            currentVideoId = videoId;
-            currentTrackName = trackName;
+        try {
 
-            playbackGeneration++;
+            // Update track only when it changes.
+            if (!videoId.equals(currentVideoId)) {
 
-            trackStarted = false;
-            cachedDuration = 0;
+                currentVideoId = videoId;
+                currentTrackName = trackName;
 
-            loadVideoInApp(videoId);
+                playbackGeneration++;
 
-            view.setNowPlaying(trackName);
-        }
+                trackStarted = false;
+                cachedDuration = 0;
 
-        // Synchronize playback position.
-        if (Math.abs(currentVideoTime - position) > 2.0) {
-            seekVideo(position);
-        }
+                view.setNowPlaying(trackName);
 
-        // Synchronize play/pause.
-        if (playing && !isPlaying) {
-            playVideo();
-            isPlaying = true;
-            view.getPlayPauseButton().setText("Ⅱ");
+                loadVideoInApp(videoId);
+            }
 
-        } else if (!playing && isPlaying) {
-            pauseVideo();
-            isPlaying = false;
-            view.getPlayPauseButton().setText("▶");
+            // Synchronize playback position.
+            if (Math.abs(currentVideoTime - position) > 2.0) {
+                seekVideo(position);
+            }
+
+            // Synchronize play/pause.
+            if (playing && !isPlaying) {
+
+                playVideo();
+                isPlaying = true;
+
+                view.getPlayPauseButton().setText("Ⅱ");
+
+            } else if (!playing && isPlaying) {
+
+                pauseVideo();
+                isPlaying = false;
+
+                view.getPlayPauseButton().setText("▶");
+            }
+
+        } finally {
+            syncingFromNetwork = false;
         }
     }
+
 
     private void togglePlayPause() {
         if (isPlaying) {
@@ -1007,19 +1021,15 @@ public class MusicController {
             isPlaying = false;
 
             view.getPlayPauseButton().setText("▶");
+            broadcastCurrentState();
 
-            if (jamManager.isHost()) {
-                broadcastCurrentState();
-            }
         } else {
             playVideo();
             isPlaying = true;
 
             view.getPlayPauseButton().setText("Ⅱ");
+            broadcastCurrentState();
 
-            if (jamManager.isHost()) {
-                broadcastCurrentState();
-            }
         }
     }
 
@@ -1035,9 +1045,9 @@ public class MusicController {
         view.getSeekSlider().setValue(0);
         view.getCurrentTimeLabel().setText("00:00");
 
-        if (jamManager.isHost()) {
-            broadcastCurrentState();
-        }
+
+        broadcastCurrentState();
+
     }
 
     private void toggleRepeat() {
@@ -1139,25 +1149,19 @@ public class MusicController {
 
     private void broadcastCurrentState() {
 
-        if (!jamManager.isHost()) return;
+        if (syncingFromNetwork) return;
 
-        if (tracks == null ||
-                currentTrackIndex < 0 ||
-                currentTrackIndex >= tracks.size()) {
+        if (jamManager == null || !jamManager.isConnected()) {
             return;
         }
 
-        Music track = tracks.get(currentTrackIndex);
-
-        String videoId = extractVideoId(track.getUrl());
-
-        if (videoId == null) return;
+        if (currentVideoId == null) return;
 
         jamManager.broadcastState(
-                videoId,
+                currentVideoId,
                 currentVideoTime,
                 isPlaying,
-                track.getName()
+                currentTrackName
         );
     }
 
