@@ -8,13 +8,8 @@ void main() {
 
 
     SwingUtilities.invokeLater(() -> {
-
-
-        MusicView view = new MusicView();
-        MusicController controller = new MusicController(view);
-        view.setVisible(true);
-
-
+        MainController controller = new MainController();
+        controller.start();
     });
 
 
