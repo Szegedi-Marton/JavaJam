@@ -1,5 +1,6 @@
 package network;
 
+import controller.MusicController;
 import view.MusicView;
 
 import javax.swing.*;
@@ -16,11 +17,11 @@ public class JamManager {
     private final List<PrintWriter> clientWriters = new ArrayList<>();
     private boolean isHost = false;
     private boolean isConnected = false;
-    private MusicView view;
+    private MusicController musicController;
     private Thread listenerThread;
 
-    public JamManager(MusicView view) {
-        this.view = view;
+    public JamManager(MusicController controller) {
+        this.musicController = controller;
     }
 
     // HOST MODE
@@ -39,7 +40,7 @@ public class JamManager {
                         clientWriters.add(writer);
                     }
 
-                    // Listen to incoming client if needed (or keep host authoritative)
+                    // Listen to incoming client
                     new Thread(new ClientHandler(socket)).start();
                 }
             } catch (IOException e) {
@@ -76,13 +77,16 @@ public class JamManager {
             } catch (IOException e) {
                 isConnected = false;
                 SwingUtilities.invokeLater(() ->
-                        JOptionPane.showMessageDialog(view, "Failed to connect to host: " + e.getMessage())
+                        JOptionPane.showMessageDialog(
+                                musicController.getView(),
+                                "Failed to connect to host: " + e.getMessage()
+                        )
                 );
             }
         }).start();
     }
 
-    // Send a command to the host (Client -> Host) if client wants to control,
+    // Send a command to the host if client wants to control,
     // or use this strictly for Host-to-Client synchronization.
     public void sendToHost(String command) {
         if (!isHost && out != null) {
@@ -91,7 +95,7 @@ public class JamManager {
     }
 
 
-    // COMMAND PARSER & EXECUTOR
+    // COMMAND PARSER n EXECUTOR
     private void handleIncomingCommand(String cmd) {
         String[] parts = cmd.split(":", 2);
         String action = parts[0];
@@ -100,23 +104,23 @@ public class JamManager {
         SwingUtilities.invokeLater(() -> {
             switch (action) {
                 case "PLAY_VIDEO":
-                    view.loadVideoInApp(data);
+                    musicController.loadVideoInApp(data);
                     break;
                 case "PAUSE":
-                    view.pauseVideo();
+                    musicController.pauseVideo();
                     break;
                 case "PLAY":
-                    view.playVideo();
+                    musicController.playVideo();
                     break;
                 case "SEEK":
                     try {
                         double seconds = Double.parseDouble(data);
-                        view.seekVideo(seconds);
+                        musicController.seekVideo(seconds);
                     } catch (NumberFormatException ignored) {
                     }
                     break;
                 case "STOP":
-                    view.stopVideo();
+                    musicController.stopVideo();
                     break;
             }
         });
