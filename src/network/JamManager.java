@@ -1,147 +1,331 @@
+
 package network;
 
-import view.MusicView;
+import controller.MusicController;
 
 import javax.swing.*;
 import java.io.*;
 import java.net.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Base64;
 
 public class JamManager {
+
     private ServerSocket serverSocket;
     private Socket clientSocket;
+
     private PrintWriter out;
     private BufferedReader in;
-    private final List<PrintWriter> clientWriters = new ArrayList<>();
-    private boolean isHost = false;
-    private boolean isConnected = false;
-    private MusicView view;
-    private Thread listenerThread;
 
-    public JamManager(MusicView view) {
-        this.view = view;
+    private final List<PrintWriter> clientWriters =
+            new CopyOnWriteArrayList<>();
+
+    private volatile boolean isHost = false;
+    private volatile boolean isConnected = false;
+
+    private final MusicController musicController;
+
+    private volatile String latestState = null;
+
+    public JamManager(MusicController controller) {
+        this.musicController = controller;
     }
+
 
     // HOST MODE
     public void startHosting(int port) {
+
         isHost = true;
-        isConnected = true;
+
         new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(port);
+                isConnected = true;
 
+                System.out.println("Jam server started on port " + port);
 
-                while (true) {
+                while (!serverSocket.isClosed()) {
+
                     Socket socket = serverSocket.accept();
-                    PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
-                    synchronized (clientWriters) {
-                        clientWriters.add(writer);
+
+                    PrintWriter writer = new PrintWriter(
+                            socket.getOutputStream(), true
+                    );
+
+                    clientWriters.add(writer);
+
+                    // Send latest state to newly connected client
+                    if (latestState != null) {
+                        writer.println(latestState);
                     }
 
-                    // Listen to incoming client if needed (or keep host authoritative)
-                    new Thread(new ClientHandler(socket)).start();
+                    new Thread(
+                            new ClientHandler(socket, writer)
+                    ).start();
                 }
+
             } catch (IOException e) {
-                e.printStackTrace();
+                if (isConnected) {
+                    e.printStackTrace();
+                }
             }
         }).start();
     }
 
-    // Broadcast a command to all clients
-    public void broadcast(String command) {
-        if (!isHost) return;
-        synchronized (clientWriters) {
-            for (PrintWriter writer : clientWriters) {
-                writer.println(command);
-            }
-        }
-    }
 
     // CLIENT MODE
     public void joinHost(String ipAddress, int port) {
+
         isHost = false;
+
         new Thread(() -> {
             try {
+
                 clientSocket = new Socket(ipAddress, port);
-                out = new PrintWriter(clientSocket.getOutputStream(), true);
-                in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+
+                out = new PrintWriter(
+                        clientSocket.getOutputStream(), true
+                );
+
+                in = new BufferedReader(
+                        new InputStreamReader(
+                                clientSocket.getInputStream(),
+                                StandardCharsets.UTF_8
+                        )
+                );
+
                 isConnected = true;
 
-
                 String line;
+
                 while ((line = in.readLine()) != null) {
                     handleIncomingCommand(line);
                 }
+
             } catch (IOException e) {
+
                 isConnected = false;
+
                 SwingUtilities.invokeLater(() ->
-                        JOptionPane.showMessageDialog(view, "Failed to connect to host: " + e.getMessage())
+                        JOptionPane.showMessageDialog(
+                                musicController.getView(),
+                                "Connection lost: " + e.getMessage()
+                        )
                 );
+
+            } finally {
+                isConnected = false;
             }
         }).start();
     }
 
-    // Send a command to the host (Client -> Host) if client wants to control,
-    // or use this strictly for Host-to-Client synchronization.
+    // SEND COMMAND
     public void sendToHost(String command) {
-        if (!isHost && out != null) {
+
+        if (!isHost && isConnected && out != null) {
             out.println(command);
         }
     }
 
+    // BROADCAST TO EVERYONE
 
-    // COMMAND PARSER & EXECUTOR
-    private void handleIncomingCommand(String cmd) {
-        String[] parts = cmd.split(":", 2);
-        String action = parts[0];
-        String data = parts.length > 1 ? parts[1] : "";
+    public void broadcast(String command) {
 
-        SwingUtilities.invokeLater(() -> {
-            switch (action) {
-                case "PLAY_VIDEO":
-                    view.loadVideoInApp(data);
-                    break;
-                case "PAUSE":
-                    view.pauseVideo();
-                    break;
-                case "PLAY":
-                    view.playVideo();
-                    break;
-                case "SEEK":
-                    try {
-                        double seconds = Double.parseDouble(data);
-                        view.seekVideo(seconds);
-                    } catch (NumberFormatException ignored) {
-                    }
-                    break;
-                case "STOP":
-                    view.stopVideo();
-                    break;
-            }
-        });
+        if (!isHost) return;
+
+        for (PrintWriter writer : clientWriters) {
+            writer.println(command);
+        }
     }
 
-    private class ClientHandler implements Runnable {
-        private Socket socket;
+    // PLAYBACK STATE
+    public void broadcastState(
+            String videoId,
+            double position,
+            boolean playing,
+            String trackName
+    ) {
 
-        public ClientHandler(Socket socket) {
+        String encodedName = Base64.getEncoder()
+                .encodeToString(
+                        trackName.getBytes(StandardCharsets.UTF_8)
+                );
+
+        String state = String.join("|",
+                "STATE",
+                videoId,
+                String.valueOf(position),
+                String.valueOf(playing),
+                encodedName
+        );
+
+        if (isHost) {
+
+            latestState = state;
+
+            broadcast(state);
+
+        } else {
+
+            sendToHost(state);
+        }
+    }
+
+
+    // RECEIVE COMMAND
+    private void handleIncomingCommand(String cmd) {
+
+        String[] parts = cmd.split("\\|", 5);
+
+        if (parts.length != 5 || !parts[0].equals("STATE")) {
+            return;
+        }
+
+        try {
+
+            String videoId = parts[1];
+
+            double position = Double.parseDouble(parts[2]);
+
+            boolean playing = Boolean.parseBoolean(parts[3]);
+
+            String trackName = new String(
+                    Base64.getDecoder().decode(parts[4]),
+                    StandardCharsets.UTF_8
+            );
+
+            SwingUtilities.invokeLater(() ->
+                    musicController.syncFromHost(
+                            videoId,
+                            position,
+                            playing,
+                            trackName
+                    )
+            );
+
+        } catch (Exception e) {
+            System.err.println(
+                    "Invalid playback state: " + e.getMessage()
+            );
+        }
+    }
+
+
+    // CLIENT HANDLER
+    private class ClientHandler implements Runnable {
+
+        private final Socket socket;
+        private final PrintWriter writer;
+
+        public ClientHandler(Socket socket, PrintWriter writer) {
             this.socket = socket;
+            this.writer = writer;
         }
 
         @Override
         public void run() {
-            try {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            try (
+                    BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(
+                                    socket.getInputStream(),
+                                    StandardCharsets.UTF_8
+                            )
+                    )
+            ) {
+
                 String line;
+
                 while ((line = reader.readLine()) != null) {
-                    // If clients can send commands back to host, handle them here
+
+                    if (line.startsWith("CONTROL|")) {
+                        handleControlCommand(line);
+                    }
                 }
-            } catch (IOException ignored) {
+
+            } catch (IOException e) {
+                System.out.println("Client disconnected.");
+            } finally {
+
+                clientWriters.remove(writer);
+
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
+                }
             }
         }
     }
 
+    public void sendControlCommand(String action, double position) {
+
+        String command = "CONTROL|" + action + "|" + position;
+
+        if (isHost) {
+            handleControlCommand(command);
+        } else {
+            sendToHost(command);
+        }
+    }
+
+    private void handleControlCommand(String command) {
+
+        String[] parts = command.split("\\|", 3);
+
+        if (parts.length != 3 || !parts[0].equals("CONTROL")) {
+            return;
+        }
+
+        String action = parts[1];
+
+        double position;
+
+        try {
+            position = Double.parseDouble(parts[2]);
+        } catch (NumberFormatException e) {
+            return;
+        }
+
+        SwingUtilities.invokeLater(() -> {
+
+            switch (action) {
+
+                case "PLAY":
+                    musicController.remotePlay();
+                    break;
+
+                case "PAUSE":
+                    musicController.remotePause();
+                    break;
+
+                case "SEEK":
+                    musicController.remoteSeek(position);
+                    break;
+
+                case "NEXT":
+                    musicController.remoteNext();
+                    break;
+
+                case "PREVIOUS":
+                    musicController.remotePrevious();
+                    break;
+
+                case "SHUFFLE":
+                    musicController.remoteShuffle();
+                    break;
+
+                case "STOP":
+                    musicController.remoteStop();
+                    break;
+            }
+
+        });
+    }
+
+
+    // STATUS
     public boolean isConnected() {
         return isConnected;
     }
