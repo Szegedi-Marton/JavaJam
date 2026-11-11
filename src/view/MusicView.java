@@ -1,5 +1,6 @@
 package view;
 
+import com.sun.net.httpserver.Headers;
 import model.Music;
 
 import javax.swing.*;
@@ -8,14 +9,17 @@ import java.awt.*;
 
 import javafx.application.Platform;
 import com.sun.net.httpserver.HttpServer;
-
-import java.awt.event.KeyEvent;
+import javax.swing.text.JTextComponent;
+import java.awt.event.*;
 import java.net.InetSocketAddress;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
+import org.cef.CefSettings;
 import org.cef.browser.CefFrame;
 import org.cef.browser.CefMessageRouter;
+import org.cef.handler.CefDisplayHandlerAdapter;
+import org.cef.handler.CefFocusHandlerAdapter;
 import org.cef.handler.CefMessageRouterHandler;
 import org.cef.handler.CefMessageRouterHandlerAdapter;
 import org.cef.callback.CefQueryCallback;
@@ -72,16 +76,16 @@ public class MusicView extends JFrame {
 
     public MusicView() {
         setTitle("Music Dashboard - Dark Mode");
-        setSize(900, 600); // Made slightly larger to fit the web player comfortably
+        setSize(900, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
 
         //Colors
-        Color bgDark = new Color(0, 0, 0);       // Dark charcoal background
-        Color panelDark = new Color(0, 0, 0);    // Slightly lighter dark for panels
-        Color textLight = new Color(220, 220, 220); // Off-white text
-        Color buttonDark = new Color(85, 85, 85);   // Button background
+        Color bgDark = new Color(0, 0, 0);       //background
+        Color panelDark = new Color(0, 0, 0);
+        Color textLight = new Color(220, 220, 220); //white text
+        Color buttonDark = new Color(85, 85, 85);   //button background
         Color accentColor = new Color(75, 110, 175);
 
         getContentPane().setBackground(bgDark);
@@ -104,45 +108,26 @@ public class MusicView extends JFrame {
         searchLabel.setForeground(textLight);
         topNavPanel.add(searchLabel);
         topNavPanel.add(searchField);
+        //enableGlobalSearchTyping();
 
-        searchField.setFocusable(true);
-        searchField.setEditable(true);
 
-        enableGlobalSearchTyping();
+        searchField.getDocument().addDocumentListener(
+                new javax.swing.event.DocumentListener() {
 
-        searchField.addFocusListener(new java.awt.event.FocusAdapter() {
+                    public void insertUpdate(
+                            javax.swing.event.DocumentEvent e) {
+                        System.out.println("Inserted: " + searchField.getText());
+                    }
 
-            @Override
-            public void focusGained(java.awt.event.FocusEvent e) {
+                    public void removeUpdate(
+                            javax.swing.event.DocumentEvent e) {}
 
-                SwingUtilities.invokeLater(() -> {
-                    searchField.requestFocusInWindow();
-                    searchField.repaint();
-                });
-            }
-        });
+                    public void changedUpdate(
+                            javax.swing.event.DocumentEvent e) {}
+                }
+        );
 
-        searchField.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mousePressed(java.awt.event.MouseEvent e) {
-                SwingUtilities.invokeLater(() -> {
-                    searchField.requestFocusInWindow();
-                });
-            }
-        });
 
-        searchField.addKeyListener(new java.awt.event.KeyAdapter() {
-
-            @Override
-            public void keyPressed(java.awt.event.KeyEvent e) {
-                System.out.println("[SEARCH] Key pressed: " + e.getKeyChar());
-            }
-
-            @Override
-            public void keyTyped(java.awt.event.KeyEvent e) {
-                System.out.println("[SEARCH] Key typed: " + e.getKeyChar());
-            }
-        });
 
         topNavPanel.add(profileButton);
 
@@ -183,6 +168,7 @@ public class MusicView extends JFrame {
 
         startPlayerServer();
         initCefPlayer();
+
 
         JPanel rightContainer = new JPanel(new BorderLayout());
         rightContainer.add(browserPanel, BorderLayout.CENTER);
@@ -286,17 +272,17 @@ public class MusicView extends JFrame {
         listModel.addListDataListener(new javax.swing.event.ListDataListener() {
             @Override
             public void intervalAdded(ListDataEvent e) {
-                System.out.println("Music item(s) added to the list!");
+                //System.out.println("Music item(s) added to the list!");
             }
 
             @Override
             public void intervalRemoved(ListDataEvent e) {
-                System.out.println("Music item(s) removed from the list!");
+                //System.out.println("Music item(s) removed from the list!");
             }
 
             @Override
             public void contentsChanged(ListDataEvent e) {
-                System.out.println("Music list contents changed/updated!");
+                //System.out.println("Music list contents changed/updated!");
             }
         });
 
@@ -310,6 +296,7 @@ public class MusicView extends JFrame {
         });
     }
 
+
     private JButton createStyledButton(String text, Color bg, Color fg) {
         JButton button = new JButton(text);
         button.setBackground(bg);
@@ -320,139 +307,159 @@ public class MusicView extends JFrame {
 
     private void initCefPlayer() {
         Thread cefThread = new Thread(() -> {
-        try {
-            CefAppBuilder builder = new CefAppBuilder();
+            try {
+                CefAppBuilder builder = new CefAppBuilder();
 
-            builder.setInstallDir(
-                    new java.io.File("jcef-bundle")
-            );
-
-            builder.setProgressHandler(
-                    new ConsoleProgressHandler()
-            );
-
-            builder.getCefSettings()
-                    .windowless_rendering_enabled = false;
-
-            cefApp = builder.build();
-
-            cefClient = cefApp.createClient();
-
-            //Create browser
-            cefBrowser = cefClient.createBrowser(
-                    "about:blank",
-                    false,
-                    false
-            );
-
-            //Create message router
-            messageRouter = CefMessageRouter.create(
-                    new CefMessageRouter.CefMessageRouterConfig(
-                            "cefQuery",
-                            "cefQueryCancel"
-                    )
-            );
-
-            if (messageRouter == null) {
-                throw new IllegalStateException(
-                        "Failed to create CefMessageRouter"
+                builder.setInstallDir(
+                        new java.io.File("jcef-bundle")
                 );
-            }
 
+                builder.setProgressHandler(
+                        new ConsoleProgressHandler()
+                );
 
-            progressHandler = new CefMessageRouterHandler() {
+                builder.getCefSettings()
+                        .windowless_rendering_enabled = false;
 
-                @Override
-                public void setNativeRef(String identifer, long nativeRef) {
+                cefApp = builder.build();
 
+                cefClient = cefApp.createClient();
+
+                //Create browser
+                cefBrowser = cefClient.createBrowser(
+                        "about:blank",
+                        false,
+                        false
+                );
+
+                //Create message router
+                messageRouter = CefMessageRouter.create(
+                        new CefMessageRouter.CefMessageRouterConfig(
+                                "cefQuery",
+                                "cefQueryCancel"
+                        )
+                );
+
+                if (messageRouter == null) {
+                    throw new IllegalStateException(
+                            "Failed to create CefMessageRouter"
+                    );
                 }
 
-                @Override
-                public long getNativeRef(String identifer) {
-                    return 0;
-                }
 
-                @Override
-                public boolean onQuery(
-                        CefBrowser browser,
-                        CefFrame frame,
-                        long queryId,
-                        String request,
-                        boolean persistent,
-                        CefQueryCallback callback) {
+                progressHandler = new CefMessageRouterHandler() {
 
-                    System.out.println("[JCEF QUERY] " + request);
+                    @Override
+                    public void setNativeRef(String identifer, long nativeRef) {
 
-                    try {
-                        org.json.JSONObject json =
-                                new org.json.JSONObject(request);
-
-                        if ("progress".equals(json.optString("type"))) {
-
-                            double current = json.getDouble("current");
-                            double duration = json.getDouble("duration");
-
-                            currentVideoTime = current;
-                            videoDuration = duration;
-
-                            System.out.println(
-                                    "[JAVA PROGRESS] " +
-                                            current + " / " + duration
-                            );
-                        }
-
-                        callback.success("OK");
-                        return true;
-
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        callback.failure(1, e.getMessage());
-                        return true;
                     }
-                }
 
-                @Override
-                public void onQueryCanceled(
-                        CefBrowser browser,
-                        CefFrame frame,
-                        long queryId) {
+                    @Override
+                    public long getNativeRef(String identifer) {
+                        return 0;
+                    }
 
-                    System.out.println("[JCEF] Query canceled: " + queryId);
-                }
-            };
+                    @Override
+                    public boolean onQuery(
+                            CefBrowser browser,
+                            CefFrame frame,
+                            long queryId,
+                            String request,
+                            boolean persistent,
+                            CefQueryCallback callback) {
 
-            messageRouter.addHandler(progressHandler, true);
+                        System.out.println("[JCEF QUERY] " + request);
 
-            cefClient.addMessageRouter(messageRouter);
+                        try {
+                            org.json.JSONObject json =
+                                    new org.json.JSONObject(request);
 
-            System.out.println("[JCEF] Message router initialized");
+                            if ("progress".equals(json.optString("type"))) {
 
-            SwingUtilities.invokeLater(() -> {
+                                double current = json.getDouble("current");
+                                double duration = json.getDouble("duration");
 
-                browserPanel.add(
-                        cefBrowser.getUIComponent(),
-                        BorderLayout.CENTER
-                );
+                                currentVideoTime = current;
+                                videoDuration = duration;
 
-                browserPanel.revalidate();
-                browserPanel.repaint();
+                                System.out.println(
+                                        "[JAVA PROGRESS] " +
+                                                current + " / " + duration
+                                );
+                            }
 
-            });
+                            callback.success("OK");
+                            return true;
 
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
-    }, "JCEF-Initialization");
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            callback.failure(1, e.getMessage());
+                            return true;
+                        }
+                    }
+
+                    @Override
+                    public void onQueryCanceled(
+                            CefBrowser browser,
+                            CefFrame frame,
+                            long queryId) {
+
+                        System.out.println("[JCEF] Query canceled: " + queryId);
+                    }
+                };
+
+                messageRouter.addHandler(progressHandler, true);
+
+                cefClient.addMessageRouter(messageRouter);
+
+                cefClient.addDisplayHandler(new CefDisplayHandlerAdapter() {
+
+                    @Override
+                    public boolean onConsoleMessage(
+                            CefBrowser browser,
+                            CefSettings.LogSeverity level,
+                            String message,
+                            String source,
+                            int line) {
+
+                        System.out.println(
+                                "[JCEF JS] " + level +
+                                        " | " + message +
+                                        " | Source: " + source +
+                                        " | Line: " + line
+                        );
+
+                        return false;
+                    }
+                });
+
+                System.out.println("[JCEF] Message router initialized");
+
+                SwingUtilities.invokeLater(() -> {
+
+                    browserPanel.add(
+                            cefBrowser.getUIComponent(),
+                            BorderLayout.CENTER
+                    );
+
+                    browserPanel.revalidate();
+                    browserPanel.repaint();
+
+                });
+
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        }, "JCEF-Initialization");
 
         cefThread.start();
     }
 
 
+
     private void startPlayerServer() {
         try {
-            playerServer = HttpServer.create(
-                    new InetSocketAddress("127.0.0.1", 0), 0
-            );
+            playerServer = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
 
             playerServerPort = playerServer.getAddress().getPort();
 
@@ -466,7 +473,7 @@ public class MusicView extends JFrame {
                     return;
                 }
 
-                String origin = "http://127.0.0.1:" + playerServerPort;
+                String origin = "http://localhost:" + playerServerPort;
 
                 String html = """
                 <!DOCTYPE html>
@@ -500,7 +507,7 @@ public class MusicView extends JFrame {
                 </head>
                 <body>
                 
-                <div id="player"></div>
+                <div id="player" referrerpolicy="strict-origin-when-cross-origin"></div>
                 
                 <script>
                 window.player = null;
@@ -543,7 +550,7 @@ public class MusicView extends JFrame {
                         disablekb: 1,
                         playsinline: 1,
                         enablejsapi: 1,
-                        origin: 'ORIGIN'
+                        origin: '__PLAYER_ORIGIN__'
                     },
 
                     events: {
@@ -588,9 +595,26 @@ public class MusicView extends JFrame {
                             window.player.playVideo();
                         }
                     },
-                    onError: function(event) {
-                        console.error("[ERROR] YouTube error:", event.data);
-                    }
+                   onError: function(event) {
+                        
+                                 const errors = {
+                                     2: "Invalid video ID or parameter",
+                                     5: "HTML5 player error",
+                                     100: "Video unavailable or private",
+                                     101: "Embedding disabled by video owner",
+                                     150: "Embedding disabled by video owner",
+                                     153: "Missing HTTP Referer or client identification"
+                                 };
+                        
+                                 console.error(
+                                     "[YOUTUBE ERROR]",
+                                     event.data,
+                                     errors[event.data] || "Unknown error"
+                                 );
+                        
+                                 console.log("[PLAYER URL]", window.location.href);
+                                 console.log("[PLAYER ORIGIN]", window.location.origin);
+                             }
                     }
                 });
                 };
@@ -756,14 +780,21 @@ public class MusicView extends JFrame {
                 </html>
                 """;
 
-                html = html.replace("VIDEO_ID", videoId)
-                        .replace("ORIGIN", origin);
+                html = html
+                        .replace("VIDEO_ID", videoId)
+                        .replace("__PLAYER_ORIGIN__", origin);
 
                 byte[] response = html.getBytes(StandardCharsets.UTF_8);
 
-                exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
-                exchange.getResponseHeaders().set("Referrer-Policy", "strict-origin-when-cross-origin");
-                exchange.getResponseHeaders().set("Cache-Control", "no-store");
+                Headers headers = exchange.getResponseHeaders();
+                headers.set("Content-Type", "text/html; charset=UTF-8");
+                headers.set("Access-Control-Allow-Origin", "*");
+                headers.set(
+                        "Referrer-Policy",
+                        "strict-origin-when-cross-origin"
+                );
+                headers.set("Cache-Control", "no-store");
+                headers.set("X-Content-Type-Options", "nosniff");
 
                 exchange.sendResponseHeaders(200, response.length);
 
@@ -857,7 +888,8 @@ public class MusicView extends JFrame {
 
         if (!playerPageLoaded) {
 
-            String url = "http://127.0.0.1:"
+
+            String url = "http://localhost:"
                     + playerServerPort
                     + "/player/"
                     + videoId;
@@ -875,47 +907,6 @@ public class MusicView extends JFrame {
                     "window.loadNewVideo('" + videoId + "')"
             );
         }
-    }
-
-    private void enableGlobalSearchTyping() {
-    KeyboardFocusManager.getCurrentKeyboardFocusManager()
-        .addKeyEventDispatcher(event -> {
-
-            if (event.getID() != KeyEvent.KEY_PRESSED) {
-                return false;
-            }
-
-            if (event.isControlDown() ||
-                    event.isAltDown() ||
-                    event.isMetaDown()) {
-                return false;
-            }
-
-            if (event.getKeyCode() == KeyEvent.VK_ESCAPE ||
-                    event.getKeyCode() == KeyEvent.VK_ENTER ||
-                    event.getKeyCode() == KeyEvent.VK_TAB ||
-                    event.getKeyCode() == KeyEvent.VK_BACK_SPACE ||
-                    event.getKeyCode() == KeyEvent.VK_DELETE) {
-                return false;
-            }
-
-            if (!isActive()) {
-                return false;
-            }
-
-            char c = event.getKeyChar();
-
-            if (!Character.isLetterOrDigit(c) &&
-                    !Character.isWhitespace(c) &&
-                    !Character.isDefined(c)) {
-                return false;
-            }
-
-            if (!searchField.isFocusOwner()) {
-                searchField.requestFocusInWindow();
-            }
-            return false;
-        });
     }
 
 
