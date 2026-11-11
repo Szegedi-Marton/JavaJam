@@ -240,17 +240,8 @@ public class JamManager {
 
                 while ((line = reader.readLine()) != null) {
 
-                    // Client sends state to host.
-                    // Host updates its own playback and broadcasts
-                    // the state to all other clients.
-
-                    if (line.startsWith("STATE|")) {
-
-                        latestState = line;
-
-                        handleIncomingCommand(line);
-
-                        broadcast(line);
+                    if (line.startsWith("CONTROL|")) {
+                        handleControlCommand(line);
                     }
                 }
 
@@ -266,6 +257,71 @@ public class JamManager {
                 }
             }
         }
+    }
+
+    public void sendControlCommand(String action, double position) {
+
+        String command = "CONTROL|" + action + "|" + position;
+
+        if (isHost) {
+            handleControlCommand(command);
+        } else {
+            sendToHost(command);
+        }
+    }
+
+    private void handleControlCommand(String command) {
+
+        String[] parts = command.split("\\|", 3);
+
+        if (parts.length != 3 || !parts[0].equals("CONTROL")) {
+            return;
+        }
+
+        String action = parts[1];
+
+        double position;
+
+        try {
+            position = Double.parseDouble(parts[2]);
+        } catch (NumberFormatException e) {
+            return;
+        }
+
+        SwingUtilities.invokeLater(() -> {
+
+            switch (action) {
+
+                case "PLAY":
+                    musicController.remotePlay();
+                    break;
+
+                case "PAUSE":
+                    musicController.remotePause();
+                    break;
+
+                case "SEEK":
+                    musicController.remoteSeek(position);
+                    break;
+
+                case "NEXT":
+                    musicController.remoteNext();
+                    break;
+
+                case "PREVIOUS":
+                    musicController.remotePrevious();
+                    break;
+
+                case "SHUFFLE":
+                    musicController.remoteShuffle();
+                    break;
+
+                case "STOP":
+                    musicController.remoteStop();
+                    break;
+            }
+
+        });
     }
 
 

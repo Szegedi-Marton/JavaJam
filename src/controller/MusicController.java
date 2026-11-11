@@ -606,13 +606,20 @@ public class MusicController {
 
         // Select a track from list
         view.getMusicListUI().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                Music selected = view.getMusicListUI().getSelectedValue();
-                if (selected != null) {
-                    currentTrackIndex = view.getMusicListUI().getSelectedIndex();
-                    handleTrackSelection(selected);
-                }
+
+            if (e.getValueIsAdjusting()) return;
+
+            Music selected = view.getMusicListUI().getSelectedValue();
+
+            if (selected == null) return;
+
+            if (jamManager.isConnected() && !jamManager.isHost()) {
+                return;
             }
+
+            currentTrackIndex = view.getMusicListUI().getSelectedIndex();
+
+            handleTrackSelection(selected);
         });
 
         // Play
@@ -620,25 +627,44 @@ public class MusicController {
 
         // Stop
         view.getStopButton().addActionListener(e -> {
-            stopPlayback();
+
+            if (jamManager.isConnected() && !jamManager.isHost()) {
+                jamManager.sendControlCommand("STOP", 0);
+            } else {
+                stopPlayback();
+            }
         });
 
         // Previous
         view.getPrevButton().addActionListener(e -> {
-            playPreviousTrack();
-            view.getSeekSlider().setValue(0);
-            view.getCurrentTimeLabel().setText("00:00");
+
+            if (jamManager.isConnected() && !jamManager.isHost()) {
+                jamManager.sendControlCommand("PREVIOUS", 0);
+            } else {
+                playPreviousTrack();
+            }
         });
+
 
         // Next
         view.getNextButton().addActionListener(e -> {
-            playNextTrack();
-            view.getSeekSlider().setValue(0);
-            view.getCurrentTimeLabel().setText("00:00");
+
+            if (jamManager.isConnected() && !jamManager.isHost()) {
+                jamManager.sendControlCommand("NEXT", 0);
+            } else {
+                playNextTrack();
+            }
         });
 
         // Shuffle
-        view.getShuffleButton().addActionListener(e -> shuffleTrack());
+        view.getShuffleButton().addActionListener(e -> {
+
+            if (jamManager.isConnected() && !jamManager.isHost()) {
+                jamManager.sendControlCommand("SHUFFLE", 0);
+            } else {
+                shuffleTrack();
+            }
+        });
 
         // Repeat
         view.getRepeatButton().addActionListener(e -> toggleRepeat());
@@ -663,7 +689,6 @@ public class MusicController {
                 double duration = cachedDuration;
 
                 if (duration > 0) {
-
                     double target = duration * slider.getValue() / 1000.0;
 
                     view.getCurrentTimeLabel().setText(formatTime(target));
@@ -673,11 +698,20 @@ public class MusicController {
 
                 isSeeking = false;
 
-                double target = cachedDuration * (slider.getValue() / 1000.0);
+                double target = cachedDuration *
+                        (slider.getValue() / 1000.0);
 
-                System.out.println("[JAVA SEEK] Slider: " + slider.getValue() + " Duration: " + cachedDuration + " Target: " + target);
+                if (jamManager.isConnected() && !jamManager.isHost()) {
 
-                seekVideo(target);
+                    jamManager.sendControlCommand("SEEK", target);
+
+                } else {
+
+                    seekVideo(target);
+                    currentVideoTime = target;
+
+                    broadcastCurrentState();
+                }
             }
         });
 
@@ -846,14 +880,9 @@ public class MusicController {
                 view.getCurrentTimeLabel().setText(formatTime(currentTime));
                 view.getDurationLabel().setText(formatTime(duration));
 
-                if (jamManager.isHost() && currentVideoId != null) {
+                if (currentVideoId != null && isPlaying && !syncingFromNetwork) {
 
-                    jamManager.broadcastState(
-                            currentVideoId,
-                            currentTime,
-                            isPlaying,
-                            currentTrackName
-                    );
+                    broadcastCurrentState();
                 }
 
                 if (isSeeking || view.getSeekSlider().getValueIsAdjusting()) {
@@ -933,12 +962,15 @@ public class MusicController {
 
     private void handleTrackSelection(Music track) {
 
+        if (syncingFromNetwork) return;
+
         playbackGeneration++;
 
         trackStarted = false;
         isAdvancingTrack = false;
         isPlaying = true;
         cachedDuration = 0;
+        currentVideoTime = 0;
 
         currentTrackName = track.getName();
 
@@ -954,6 +986,8 @@ public class MusicController {
             currentVideoId = videoId;
 
             loadVideoInApp(videoId);
+
+            broadcastCurrentState();
         }
     }
 
@@ -963,6 +997,7 @@ public class MusicController {
             boolean playing,
             String trackName
     ) {
+
         if (videoId == null ||
                 !videoId.matches("[a-zA-Z0-9_-]{11}")) {
             return;
@@ -972,7 +1007,6 @@ public class MusicController {
 
         try {
 
-            // Update track only when it changes.
             if (!videoId.equals(currentVideoId)) {
 
                 currentVideoId = videoId;
@@ -982,31 +1016,33 @@ public class MusicController {
 
                 trackStarted = false;
                 cachedDuration = 0;
+                currentVideoTime = 0;
 
                 view.setNowPlaying(trackName);
 
                 loadVideoInApp(videoId);
             }
 
-            // Synchronize playback position.
             if (Math.abs(currentVideoTime - position) > 2.0) {
+
                 seekVideo(position);
+
+                currentVideoTime = position;
             }
 
-            // Synchronize play/pause.
-            if (playing && !isPlaying) {
+            if (playing != isPlaying) {
 
-                playVideo();
-                isPlaying = true;
+                if (playing) {
+                    playVideo();
+                } else {
+                    pauseVideo();
+                }
 
-                view.getPlayPauseButton().setText("Ⅱ");
+                isPlaying = playing;
 
-            } else if (!playing && isPlaying) {
-
-                pauseVideo();
-                isPlaying = false;
-
-                view.getPlayPauseButton().setText("▶");
+                view.getPlayPauseButton().setText(
+                        playing ? "Ⅱ" : "▶"
+                );
             }
 
         } finally {
@@ -1016,21 +1052,32 @@ public class MusicController {
 
 
     private void togglePlayPause() {
+
+        if (jamManager.isConnected() && !jamManager.isHost()) {
+
+            jamManager.sendControlCommand(
+                    isPlaying ? "PAUSE" : "PLAY", 0
+            );
+
+            return;
+        }
+
         if (isPlaying) {
+
             pauseVideo();
             isPlaying = false;
 
             view.getPlayPauseButton().setText("▶");
-            broadcastCurrentState();
 
         } else {
+
             playVideo();
             isPlaying = true;
 
             view.getPlayPauseButton().setText("Ⅱ");
-            broadcastCurrentState();
-
         }
+
+        broadcastCurrentState();
     }
 
     private void stopPlayback() {
@@ -1171,6 +1218,44 @@ public class MusicController {
 
     public MusicView getView() {
         return view;
+    }
+
+    public void remotePlay() {
+        if (!isPlaying) {
+            togglePlayPause();
+        }
+    }
+
+    public void remotePause() {
+        if (isPlaying) {
+            togglePlayPause();
+        }
+    }
+
+    public void remoteSeek(double position) {
+
+        if (currentVideoId == null) return;
+
+        seekVideo(position);
+        currentVideoTime = position;
+
+        broadcastCurrentState();
+    }
+
+    public void remoteNext() {
+        playNextTrack();
+    }
+
+    public void remotePrevious() {
+        playPreviousTrack();
+    }
+
+    public void remoteShuffle() {
+        shuffleTrack();
+    }
+
+    public void remoteStop() {
+        stopPlayback();
     }
 
 
