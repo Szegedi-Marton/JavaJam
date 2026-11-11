@@ -619,18 +619,7 @@ public class MusicController {
 
         // Stop
         view.getStopButton().addActionListener(e -> {
-
-            stopVideo();
-
-            isPlaying = false;
-
-            view.getPlayPauseButton().setText("▶");
-
-            view.getSeekSlider().setValue(0);
-
-            view.getCurrentTimeLabel().setText("00:00");
-
-            view.setNowPlaying("Nothing playing");
+            stopPlayback();
         });
 
         // Previous
@@ -964,7 +953,6 @@ public class MusicController {
             currentVideoId = videoId;
 
             loadVideoInApp(videoId);
-
         }
     }
 
@@ -1017,11 +1005,38 @@ public class MusicController {
         if (isPlaying) {
             pauseVideo();
             isPlaying = false;
+
             view.getPlayPauseButton().setText("▶");
+
+            if (jamManager.isHost()) {
+                broadcastCurrentState();
+            }
         } else {
             playVideo();
             isPlaying = true;
+
             view.getPlayPauseButton().setText("Ⅱ");
+
+            if (jamManager.isHost()) {
+                broadcastCurrentState();
+            }
+        }
+    }
+
+    private void stopPlayback() {
+
+        stopVideo();
+
+        isPlaying = false;
+        trackStarted = false;
+        cachedDuration = 0;
+
+        view.getPlayPauseButton().setText("▶");
+        view.getSeekSlider().setValue(0);
+        view.getCurrentTimeLabel().setText("00:00");
+
+        if (jamManager.isHost()) {
+            broadcastCurrentState();
         }
     }
 
@@ -1120,6 +1135,30 @@ public class MusicController {
         }
 
         return null;
+    }
+
+    private void broadcastCurrentState() {
+
+        if (!jamManager.isHost()) return;
+
+        if (tracks == null ||
+                currentTrackIndex < 0 ||
+                currentTrackIndex >= tracks.size()) {
+            return;
+        }
+
+        Music track = tracks.get(currentTrackIndex);
+
+        String videoId = extractVideoId(track.getUrl());
+
+        if (videoId == null) return;
+
+        jamManager.broadcastState(
+                videoId,
+                currentVideoTime,
+                isPlaying,
+                track.getName()
+        );
     }
 
     public void setTrackStarted(boolean trackStarted) {
