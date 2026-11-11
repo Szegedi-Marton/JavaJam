@@ -57,6 +57,8 @@ public class MusicController {
     private boolean isSeeking = false;
     private Timer playbackTimer;
     private double cachedDuration = 0;
+    private String currentVideoId = null;
+    private String currentTrackName = "Nothing playing";
 
     public MusicController(MusicView view) {
         this.view = view;
@@ -854,6 +856,16 @@ public class MusicController {
                 view.getCurrentTimeLabel().setText(formatTime(currentTime));
                 view.getDurationLabel().setText(formatTime(duration));
 
+                if (jamManager.isHost() && currentVideoId != null) {
+
+                    jamManager.broadcastState(
+                            currentVideoId,
+                            currentTime,
+                            isPlaying,
+                            currentTrackName
+                    );
+                }
+
                 if (isSeeking || view.getSeekSlider().getValueIsAdjusting()) {
                     return;
                 }
@@ -938,20 +950,66 @@ public class MusicController {
         isPlaying = true;
         cachedDuration = 0;
 
+        currentTrackName = track.getName();
+
         view.getSeekSlider().setValue(0);
         view.getCurrentTimeLabel().setText("00:00");
 
         view.setNowPlaying(track.getName());
         view.getPlayPauseButton().setText("Ⅱ");
 
-        System.out.println("Playing in-app: " + track);
-
         String videoId = extractVideoId(track.getUrl());
 
         if (videoId != null) {
+            currentVideoId = videoId;
+
             loadVideoInApp(videoId);
 
-            jamManager.broadcast("PLAY_VIDEO:" + videoId);
+        }
+    }
+
+    public void syncFromHost(
+            String videoId,
+            double position,
+            boolean playing,
+            String trackName
+    ) {
+        if (videoId == null ||
+                !videoId.matches("[a-zA-Z0-9_-]{11}")) {
+            return;
+        }
+
+        // Update track only when it changes.
+        if (!videoId.equals(currentVideoId)) {
+
+            currentVideoId = videoId;
+            currentTrackName = trackName;
+
+            playbackGeneration++;
+
+            trackStarted = false;
+            cachedDuration = 0;
+
+            loadVideoInApp(videoId);
+
+            view.setNowPlaying(trackName);
+        }
+
+        // Synchronize playback position.
+        if (Math.abs(currentVideoTime - position) > 2.0) {
+            seekVideo(position);
+        }
+
+        // Synchronize play/pause.
+        if (playing && !isPlaying) {
+            playVideo();
+            isPlaying = true;
+            view.getPlayPauseButton().setText("Ⅱ");
+
+        } else if (!playing && isPlaying) {
+            pauseVideo();
+            isPlaying = false;
+            view.getPlayPauseButton().setText("▶");
         }
     }
 
@@ -960,12 +1018,10 @@ public class MusicController {
             pauseVideo();
             isPlaying = false;
             view.getPlayPauseButton().setText("▶");
-            jamManager.broadcast("PAUSE");
         } else {
             playVideo();
             isPlaying = true;
             view.getPlayPauseButton().setText("Ⅱ");
-            jamManager.broadcast("PLAY");
         }
     }
 

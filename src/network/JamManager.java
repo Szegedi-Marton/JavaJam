@@ -6,7 +6,9 @@ import view.MusicView;
 import javax.swing.*;
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 
 public class JamManager {
@@ -19,6 +21,7 @@ public class JamManager {
     private boolean isConnected = false;
     private MusicController musicController;
     private Thread listenerThread;
+    private volatile String latestState = null;
 
     public JamManager(MusicController controller) {
         this.musicController = controller;
@@ -42,6 +45,9 @@ public class JamManager {
 
                     // Listen to incoming client
                     new Thread(new ClientHandler(socket)).start();
+                    if (latestState != null) {
+                        writer.println(latestState);
+                    }
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -97,33 +103,35 @@ public class JamManager {
 
     // COMMAND PARSER n EXECUTOR
     private void handleIncomingCommand(String cmd) {
-        String[] parts = cmd.split(":", 2);
-        String action = parts[0];
-        String data = parts.length > 1 ? parts[1] : "";
 
-        SwingUtilities.invokeLater(() -> {
-            switch (action) {
-                case "PLAY_VIDEO":
-                    musicController.loadVideoInApp(data);
-                    break;
-                case "PAUSE":
-                    musicController.pauseVideo();
-                    break;
-                case "PLAY":
-                    musicController.playVideo();
-                    break;
-                case "SEEK":
-                    try {
-                        double seconds = Double.parseDouble(data);
-                        musicController.seekVideo(seconds);
-                    } catch (NumberFormatException ignored) {
-                    }
-                    break;
-                case "STOP":
-                    musicController.stopVideo();
-                    break;
-            }
-        });
+        String[] parts = cmd.split("\\|", 5);
+
+        if (parts.length < 5 || !parts[0].equals("STATE")) {
+            return;
+        }
+
+        try {
+            String videoId = parts[1];
+            double position = Double.parseDouble(parts[2]);
+            boolean playing = Boolean.parseBoolean(parts[3]);
+
+            String trackName = new String(
+                    Base64.getDecoder().decode(parts[4]),
+                    StandardCharsets.UTF_8
+            );
+
+            SwingUtilities.invokeLater(() ->
+                    musicController.syncFromHost(
+                            videoId,
+                            position,
+                            playing,
+                            trackName
+                    )
+            );
+
+        } catch (Exception e) {
+            System.err.println("Invalid playback state: " + e.getMessage());
+        }
     }
 
     private class ClientHandler implements Runnable {
@@ -152,5 +160,30 @@ public class JamManager {
 
     public boolean isHost() {
         return isHost;
+    }
+
+    public void broadcastState(
+            String videoId,
+            double position,
+            boolean playing,
+            String trackName
+    ) {
+        if (!isHost) return;
+
+        String encodedName = Base64.getEncoder().encodeToString(
+                trackName.getBytes(StandardCharsets.UTF_8)
+        );
+
+        String state = String.join("|",
+                "STATE",
+                videoId,
+                String.valueOf(position),
+                String.valueOf(playing),
+                encodedName
+        );
+
+        latestState = state;
+
+        broadcast(state);
     }
 }
