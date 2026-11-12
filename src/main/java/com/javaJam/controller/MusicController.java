@@ -45,6 +45,8 @@ public class MusicController {
     private final MusicView view;
     private final YoutubeScraperService scraper;
     private JamManager jamManager;
+    // Add this field at the top of MusicController with your other variables
+    private String loadedVideoId = null;
     private boolean isAdvancingTrack = false;
     private boolean progressRequestPending = false;
     private int playbackGeneration = 0;
@@ -135,7 +137,7 @@ public class MusicController {
                             boolean persistent,
                             CefQueryCallback callback) {
 
-                        System.out.println("[JCEF QUERY] " + request);
+                        //System.out.println("[JCEF QUERY] " + request);
 
                         try {
                             org.json.JSONObject json =
@@ -156,10 +158,7 @@ public class MusicController {
                                 currentVideoTime = current;
                                 videoDuration = duration;
 
-                                System.out.println(
-                                        "[JAVA PROGRESS] " +
-                                                current + " / " + duration
-                                );
+                              //  System.out.println("[JAVA PROGRESS] " + current + " / " + duration);
                             }
 
                             callback.success("OK");
@@ -195,13 +194,6 @@ public class MusicController {
                             String message,
                             String source,
                             int line) {
-
-                        System.out.println(
-                                "[JCEF JS] " + level +
-                                        " | " + message +
-                                        " | Source: " + source +
-                                        " | Line: " + line
-                        );
 
                         return false;
                     }
@@ -606,18 +598,20 @@ public class MusicController {
 
         // Select a track from list
         view.getMusicListUI().addListSelectionListener(e -> {
-
-            if (e.getValueIsAdjusting()) return;
+            if (e.getValueIsAdjusting() || syncingFromNetwork) return;
 
             Music selected = view.getMusicListUI().getSelectedValue();
-
             if (selected == null) return;
 
+            currentTrackIndex = view.getMusicListUI().getSelectedIndex();
+
             if (jamManager.isConnected() && !jamManager.isHost()) {
+                String videoId = extractVideoId(selected.getUrl());
+                if (videoId != null) {
+                    jamManager.sendSelectTrackCommand(videoId, selected.getName());
+                }
                 return;
             }
-
-            currentTrackIndex = view.getMusicListUI().getSelectedIndex();
 
             handleTrackSelection(selected);
         });
@@ -792,9 +786,16 @@ public class MusicController {
             return;
         }
 
+
+        if (playerPageLoaded && videoId.equals(loadedVideoId)) {
+            System.out.println("[JCEF] Video already loaded, skipping reload: " + videoId);
+            return;
+        }
+
+        loadedVideoId = videoId;
+        currentVideoId = videoId;
+
         if (!playerPageLoaded) {
-
-
             String url = "http://localhost:"
                     + playerServerPort
                     + "/player/"
@@ -806,8 +807,7 @@ public class MusicController {
             playerPageLoaded = true;
 
         } else {
-
-            System.out.println("[JCEF] Switching video: " + videoId);
+            System.out.println("[JCEF] Switching video via JS command: " + videoId);
 
             executePlayerCommand(
                     "window.loadNewVideo('" + videoId + "')"
@@ -997,104 +997,88 @@ public class MusicController {
             boolean playing,
             String trackName
     ) {
-
-        if (videoId == null ||
-                !videoId.matches("[a-zA-Z0-9_-]{11}")) {
-            return;
-        }
-
         syncingFromNetwork = true;
-
         try {
+            playbackGeneration++;
+            trackStarted = false;
+            isAdvancingTrack = false;
+            currentTrackName = trackName;
 
-            if (!videoId.equals(currentVideoId)) {
+            view.setNowPlaying(trackName);
+            view.getPlayPauseButton().setText(playing ? "Ⅱ" : "▶");
 
-                currentVideoId = videoId;
-                currentTrackName = trackName;
-
-                playbackGeneration++;
-
-                trackStarted = false;
-                cachedDuration = 0;
-                currentVideoTime = 0;
-
-                view.setNowPlaying(trackName);
-
+            if (videoId != null && (!videoId.equals(currentVideoId) || !playerPageLoaded || loadedVideoId == null)) {
+                //System.out.println("[JAM SYNC] Initializing/Switching to track from host: " + videoId);
                 loadVideoInApp(videoId);
             }
 
-            if (Math.abs(currentVideoTime - position) > 2.0) {
-
+            double timeDiff = Math.abs(currentVideoTime - position);
+            if (timeDiff > 2.0) {
+                //System.out.println("[JAM SYNC] Drift detected (" + timeDiff + "s), seeking to: " + position);
                 seekVideo(position);
-
-                currentVideoTime = position;
             }
 
-            if (playing != isPlaying) {
+            currentVideoTime = position;
+            isPlaying = playing;
 
-                if (playing) {
-                    playVideo();
-                } else {
-                    pauseVideo();
-                }
-
-                isPlaying = playing;
-
-                view.getPlayPauseButton().setText(
-                        playing ? "Ⅱ" : "▶"
-                );
+            if (playing) {
+                playVideo();
+            } else {
+                pauseVideo();
             }
-
         } finally {
             syncingFromNetwork = false;
         }
     }
 
+    private void broadcastCurrentState() {
+        if (currentVideoId == null) return;
+
+        //host should broadcast states
+        if (jamManager.isConnected() && jamManager.isHost()) {
+            jamManager.broadcastState(
+                    currentVideoId,
+                    currentVideoTime,
+                    isPlaying,
+                    currentTrackName
+            );
+        }
+    }
+
 
     private void togglePlayPause() {
-
         if (jamManager.isConnected() && !jamManager.isHost()) {
-
-            jamManager.sendControlCommand(
-                    isPlaying ? "PAUSE" : "PLAY", 0
-            );
-
+            if (isPlaying) {
+                jamManager.sendControlCommand("PAUSE", currentVideoTime);
+            } else {
+                jamManager.sendControlCommand("PLAY", currentVideoTime);
+            }
             return;
         }
 
         if (isPlaying) {
-
             pauseVideo();
             isPlaying = false;
-
             view.getPlayPauseButton().setText("▶");
-
+            jamManager.sendControlCommand("PAUSE", currentVideoTime);
         } else {
-
             playVideo();
             isPlaying = true;
-
             view.getPlayPauseButton().setText("Ⅱ");
+            jamManager.sendControlCommand("PLAY", currentVideoTime);
         }
-
-        broadcastCurrentState();
     }
 
     private void stopPlayback() {
-
         stopVideo();
-
         isPlaying = false;
-        trackStarted = false;
-        cachedDuration = 0;
-
         view.getPlayPauseButton().setText("▶");
         view.getSeekSlider().setValue(0);
         view.getCurrentTimeLabel().setText("00:00");
-
-
-        broadcastCurrentState();
-
+        view.setNowPlaying("Nothing playing");
+        if (jamManager.isConnected() && jamManager.isHost()) {
+            jamManager.sendControlCommand("STOP", 0);
+        }
     }
 
     private void toggleRepeat() {
@@ -1104,28 +1088,17 @@ public class MusicController {
     }
 
     private void playNextTrack() {
-
         int size = view.getListModel().size();
-
         if (size == 0) {
             isAdvancingTrack = false;
-            playbackTimer.start();
             return;
         }
 
-        try {
-            currentTrackIndex++;
-
-            if (currentTrackIndex >= size) {
-                currentTrackIndex = 0;
-            }
-
-            selectTrackAt(currentTrackIndex);
-
-        } finally {
-            isAdvancingTrack = false;
-            playbackTimer.start();
+        currentTrackIndex++;
+        if (currentTrackIndex >= size) {
+            currentTrackIndex = 0;
         }
+        selectTrackAt(currentTrackIndex);
     }
 
     private void playPreviousTrack() {
@@ -1156,10 +1129,20 @@ public class MusicController {
         view.getMusicListUI().ensureIndexIsVisible(index);
         Music track = view.getListModel().getElementAt(index);
         if (track != null) {
-            handleTrackSelection(track);
+            String videoId = extractVideoId(track.getUrl());
+            if (videoId != null) {
+                if (jamManager.isConnected() && !jamManager.isHost()) {
+                    jamManager.sendSelectTrackCommand(videoId, track.getName());
+                } else {
+                    handleTrackSelection(track);
+                    if (jamManager.isConnected() && jamManager.isHost()) {
+                        jamManager.sendSelectTrackCommand(videoId, track.getName());
+                    }
+                }
+            }
         }
+        isAdvancingTrack = false;
     }
-
 
     private String extractVideoId(String url) {
         if (url == null) return null;
@@ -1194,52 +1177,22 @@ public class MusicController {
         return null;
     }
 
-    private void broadcastCurrentState() {
-
-        if (syncingFromNetwork) return;
-
-        if (jamManager == null || !jamManager.isConnected()) {
-            return;
-        }
-
-        if (currentVideoId == null) return;
-
-        jamManager.broadcastState(
-                currentVideoId,
-                currentVideoTime,
-                isPlaying,
-                currentTrackName
-        );
-    }
-
-    public void setTrackStarted(boolean trackStarted) {
-        this.trackStarted = trackStarted;
-    }
-
-    public MusicView getView() {
-        return view;
-    }
 
     public void remotePlay() {
-        if (!isPlaying) {
-            togglePlayPause();
-        }
+        isPlaying = true;
+        playVideo();
+        view.getPlayPauseButton().setText("Ⅱ");
     }
 
     public void remotePause() {
-        if (isPlaying) {
-            togglePlayPause();
-        }
+        isPlaying = false;
+        pauseVideo();
+        view.getPlayPauseButton().setText("▶");
     }
 
     public void remoteSeek(double position) {
-
-        if (currentVideoId == null) return;
-
         seekVideo(position);
         currentVideoTime = position;
-
-        broadcastCurrentState();
     }
 
     public void remoteNext() {
@@ -1255,7 +1208,30 @@ public class MusicController {
     }
 
     public void remoteStop() {
-        stopPlayback();
+        stopVideo();
+        isPlaying = false;
+        view.getPlayPauseButton().setText("▶");
+        view.getSeekSlider().setValue(0);
+        view.getCurrentTimeLabel().setText("00:00");
+        view.setNowPlaying("Nothing playing");
+    }
+
+    public void remoteSelectTrack(String videoId, String trackName) {
+        syncingFromNetwork = true;
+        try {
+            currentTrackName = trackName;
+            currentVideoId = videoId;
+            isPlaying = true;
+            view.setNowPlaying(trackName);
+            view.getPlayPauseButton().setText("Ⅱ");
+            loadVideoInApp(videoId);
+        } finally {
+            syncingFromNetwork = false;
+        }
+    }
+
+    public MusicView getView() {
+        return view;
     }
 
 
