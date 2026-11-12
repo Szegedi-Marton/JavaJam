@@ -53,5 +53,8 @@ jobs:
                - Comment on issue #${{ github.event.issue.number }} with a link to the PR.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
           CI: 'true'
+          GIT_TERMINAL_PROMPT: '0'
+          MAVEN_OPTS: "-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN"
