@@ -1,36 +1,35 @@
 package com.javaJam.view;
 
+import com.javaJam.controller.MusicController;
 import com.javaJam.model.Music;
 import javax.swing.*;
 import javax.swing.event.ListDataEvent;
 import java.awt.*;
-
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 public class MusicView extends JFrame {
     private JPanel browserPanel;
-
+    private MusicController musicController;
     private DefaultListModel<Music> listModel;
     private JList<Music> musicListUI;
+
     private JButton playPauseButton;
     private JButton repeatButton;
-
     private JSlider seekSlider;
     private JLabel currentTimeLabel;
     private JLabel durationLabel;
     private JLabel nowPlayingLabel;
-
     private JButton settingsButton;
     private JTextField searchField;
     private JButton profileButton;
-
-
     private JButton prevButton;
     private JButton stopButton;
     private JButton nextButton;
     private JButton shuffleButton;
     private JButton jamButton;
     private JSlider volumeSlider;
-    private Timer progressTimer;
 
 
     public MusicView() {
@@ -39,16 +38,13 @@ public class MusicView extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
-
         //Colors
         Color bgDark = new Color(0, 0, 0);       //background
         Color panelDark = new Color(0, 0, 0);
         Color textLight = new Color(220, 220, 220); //white text
         Color buttonDark = new Color(30, 30, 30);   //button background
         Color accentColor = new Color(75, 110, 175);
-
         getContentPane().setBackground(bgDark);
-
 
         //TOP NAV
         JPanel topNavPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
@@ -60,6 +56,32 @@ public class MusicView extends JFrame {
         searchField.setForeground(textLight);
         searchField.setCaretColor(textLight);
 
+        searchField.setFocusable(true);
+        searchField.setRequestFocusEnabled(true);
+
+        searchField.addMouseListener(new java.awt.event.MouseAdapter() {
+
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+
+                SwingUtilities.invokeLater(() -> {
+
+                    if (musicController != null) {
+                        musicController.releaseBrowserFocus();
+                    }
+
+                    searchField.requestFocusInWindow();
+                    searchField.grabFocus();
+
+                    System.out.println(
+                            "[SWING] Search focus: " +
+                                    searchField.isFocusOwner()
+                    );
+
+                });
+            }
+        });
+
         profileButton = createStyledButton("Profile", buttonDark, textLight);
 
         topNavPanel.add(settingsButton);
@@ -67,33 +89,12 @@ public class MusicView extends JFrame {
         searchLabel.setForeground(textLight);
         topNavPanel.add(searchLabel);
         topNavPanel.add(searchField);
-        //enableGlobalSearchTyping();
-
-
-        searchField.getDocument().addDocumentListener(
-                new javax.swing.event.DocumentListener() {
-
-                    public void insertUpdate(
-                            javax.swing.event.DocumentEvent e) {
-                        System.out.println("Inserted: " + searchField.getText());
-                    }
-
-                    public void removeUpdate(
-                            javax.swing.event.DocumentEvent e) {}
-
-                    public void changedUpdate(
-                            javax.swing.event.DocumentEvent e) {}
-                }
-        );
-
-
+        setupFocusHandling();
 
         topNavPanel.add(profileButton);
-
         add(topNavPanel, BorderLayout.NORTH);
 
-
-        //List com.javaJam.view n Web player
+        //List view n Web player
         listModel = new DefaultListModel<>();
         musicListUI = new JList<>(listModel);
         musicListUI.setBackground(bgDark);
@@ -124,8 +125,6 @@ public class MusicView extends JFrame {
 
         browserPanel = new JPanel(new BorderLayout());
         browserPanel.setBackground(Color.BLACK);
-
-
 
         JPanel rightContainer = new JPanel(new BorderLayout());
         rightContainer.add(browserPanel, BorderLayout.CENTER);
@@ -237,6 +236,8 @@ public class MusicView extends JFrame {
                 //System.out.println("Music list contents changed/updated!");
             }
         });
+
+        setupSearchFocus();
     }
 
 
@@ -246,6 +247,66 @@ public class MusicView extends JFrame {
         button.setForeground(fg);
         button.setFocusPainted(false);
         return button;
+    }
+
+    private void setupSearchFocus() {
+
+        searchField.setFocusable(true);
+        searchField.setEditable(true);
+        searchField.setEnabled(true);
+
+        searchField.addMouseListener(new java.awt.event.MouseAdapter() {
+
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+
+                SwingUtilities.invokeLater(() -> {
+
+                    // Request focus for the JFrame.
+                    MusicView.this.requestFocus();
+
+                    // Then transfer focus to the search field.
+                    searchField.requestFocus();
+                    searchField.grabFocus();
+
+                    System.out.println(
+                            "[SWING] Search focus requested: " +
+                                    searchField.isFocusOwner()
+                    );
+                });
+            }
+        });
+    }
+
+    private void setupFocusHandling() {
+
+        setFocusable(true);
+
+        // Explicitly request focus
+        searchField.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    searchField.requestFocus();
+                    searchField.grabFocus();
+                });
+            }
+        });
+
+        // Global Swing keyboard shortcuts.
+        KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                .addKeyEventDispatcher(event -> {
+
+                    if (!isActive()) {
+                        return false;
+                    }
+
+                    if (event.getID() != KeyEvent.KEY_PRESSED) {
+                        return false;
+                    }
+
+                    return false;
+                });
     }
 
 
@@ -310,6 +371,16 @@ public class MusicView extends JFrame {
         SwingUtilities.invokeLater(() ->
                 nowPlayingLabel.setText(name)
         );
+    }
+
+    public void focusSearchField() {
+        SwingUtilities.invokeLater(() -> {
+            searchField.requestFocusInWindow();
+        });
+    }
+
+    public void setMusicController(MusicController controller) {
+        this.musicController = controller;
     }
 
     public JLabel getCurrentTimeLabel() {

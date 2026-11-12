@@ -29,18 +29,31 @@
 </head>
 <body>
 
-<div id="player"></div>
+<div id="player" referrerpolicy="strict-origin-when-cross-origin"></div>
 
 <script>
     window.player = null;
     window.isReady = false;
     window.repeatEnabled = false;
-    window.pendingVideoId = 'Mmw-PpWhKFg';
+    window.pendingVideoId = 'VIDEO_ID';
     window.pendingCommands = [];
 
     function debug(message) {
         console.log("[JS] " + message);
     }
+
+    window.startInitialPlayback = function() {
+
+        if (!window.isPlayerReady()) {
+            debug("Player not ready yet");
+            return;
+        }
+
+        debug("Starting initial playback");
+
+        window.player.mute();
+        window.player.playVideo();
+    };
 
     //
     //PLAYER READY CHECK
@@ -72,7 +85,7 @@
                 disablekb: 1,
                 playsinline: 1,
                 enablejsapi: 1,
-                //origin: 'ORIGIN'
+                origin: '__PLAYER_ORIGIN__'
             },
 
             events: {
@@ -84,6 +97,8 @@
                     while (window.pendingCommands.length > 0) {
                         window.pendingCommands.shift()();
                     }
+
+                    window.startInitialPlayback();
                 },
                 onStateChange: function(event) {
                     var states = {
@@ -102,8 +117,21 @@
                     }
 
                     if (event.data === YT.PlayerState.PLAYING) {
-                        debug("Playback resumed at: " +
-                            window.player.getCurrentTime());
+
+                        debug("Playback started");
+
+                        window.player.unMute();
+
+                        window.cefQuery({
+                            request: JSON.stringify({
+                                type: "playing"
+                            }),
+                            persistent: false,
+                            onSuccess: function(response) {},
+                            onFailure: function(code, message) {
+                                console.error("[JCEF]", message);
+                            }
+                        });
                     }
 
                     if (event.data === YT.PlayerState.PAUSED) {
@@ -118,7 +146,24 @@
                     }
                 },
                 onError: function(event) {
-                    console.error("[ERROR] YouTube error:", event.data);
+
+                    const errors = {
+                        2: "Invalid video ID or parameter",
+                        5: "HTML5 player error",
+                        100: "Video unavailable or private",
+                        101: "Embedding disabled by video owner",
+                        150: "Embedding disabled by video owner",
+                        153: "Missing HTTP Referer or client identification"
+                    };
+
+                    console.error(
+                        "[YOUTUBE ERROR]",
+                        event.data,
+                        errors[event.data] || "Unknown error"
+                    );
+
+                    console.log("[PLAYER URL]", window.location.href);
+                    console.log("[PLAYER ORIGIN]", window.location.origin);
                 }
             }
         });
@@ -141,18 +186,17 @@
     //
     window.loadNewVideo = function(videoId) {
 
-        if (!window.isPlayerReady()) {
-            window.pendingVideoId = videoId;
-            return;
-        }
-
         window.pendingVideoId = videoId;
 
-        debug("Loading video: " + videoId);
+        executeWhenReady(function() {
 
-        window.player.loadVideoById({
-            videoId: videoId,
-            startSeconds: 0
+            debug("Loading video: " + videoId);
+
+            window.player.loadVideoById({
+                videoId: videoId,
+                startSeconds: 0
+            });
+
         });
     };
 
@@ -283,4 +327,3 @@
 </script>
 </body>
 </html>
-""";

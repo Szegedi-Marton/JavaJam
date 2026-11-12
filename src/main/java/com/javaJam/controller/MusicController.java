@@ -14,12 +14,15 @@ import org.cef.browser.CefFrame;
 import org.cef.browser.CefMessageRouter;
 import org.cef.callback.CefQueryCallback;
 import org.cef.handler.CefDisplayHandlerAdapter;
+import org.cef.handler.CefLoadHandlerAdapter;
 import org.cef.handler.CefMessageRouterHandler;
 import com.javaJam.service.YoutubeScraperService;
 import com.javaJam.view.MusicView;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -45,7 +48,6 @@ public class MusicController {
     private final MusicView view;
     private final YoutubeScraperService scraper;
     private JamManager jamManager;
-    // Add this field at the top of MusicController with your other variables
     private String loadedVideoId = null;
     private boolean isAdvancingTrack = false;
     private boolean progressRequestPending = false;
@@ -65,11 +67,12 @@ public class MusicController {
 
     public MusicController(MusicView view) {
         this.view = view;
+        this.view.setMusicController(this);
         this.scraper = new YoutubeScraperService();
         this.jamManager = new JamManager(this);
 
         startPlayerServer();
-        initCefPlayer();
+
         initController();
         startPlaybackTimer();
     }
@@ -89,6 +92,10 @@ public class MusicController {
 
                 builder.getCefSettings()
                         .windowless_rendering_enabled = false;
+
+                builder.addJcefArgs(
+                        "--autoplay-policy=no-user-gesture-required"
+                );
 
                 cefApp = builder.build();
 
@@ -185,6 +192,24 @@ public class MusicController {
 
                 cefClient.addMessageRouter(messageRouter);
 
+                cefClient.addLoadHandler(new CefLoadHandlerAdapter() {
+                    @Override
+                    public void onLoadEnd(CefBrowser browser, CefFrame frame, int httpStatusCode) {
+                        if (frame.isMain() && httpStatusCode == 200) {
+                            String currentUrl = browser.getURL();
+                            if (currentUrl != null && currentUrl.contains("/player/")) {
+                                System.out.println("[JCEF] Player page load complete. Sending initial JS start command...");
+
+                                SwingUtilities.invokeLater(() -> {
+                                    if (isPlaying) {
+                                        executePlayerCommand("if(typeof playVideo === 'function') { playVideo(); }");
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
+
                 cefClient.addDisplayHandler(new CefDisplayHandlerAdapter() {
 
                     @Override
@@ -194,17 +219,33 @@ public class MusicController {
                             String message,
                             String source,
                             int line) {
-
                         return false;
                     }
                 });
+
+                cefClient.addFocusHandler(
+                        new org.cef.handler.CefFocusHandlerAdapter() {
+
+                            @Override
+                            public void onGotFocus(CefBrowser browser) {
+                                System.out.println("[JCEF] Browser got focus");
+                            }
+
+                            @Override
+                            public void onTakeFocus(CefBrowser browser, boolean next) {
+                                System.out.println("[JCEF] Browser released focus");
+                            }
+                        }
+                );
 
                 System.out.println("[JCEF] Message router initialized");
 
                 SwingUtilities.invokeLater(() -> {
 
+                    Component browserComponent = cefBrowser.getUIComponent();
+
                     view.getBrowserPanel().add(
-                            cefBrowser.getUIComponent(),
+                            browserComponent,
                             BorderLayout.CENTER
                     );
 
@@ -221,370 +262,89 @@ public class MusicController {
         cefThread.start();
     }
 
+
     private void startPlayerServer() {
         try {
-            playerServer = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+            playerServer = HttpServer.create(
+                    new InetSocketAddress("localhost", 0), 0
+            );
 
             playerServerPort = playerServer.getAddress().getPort();
 
             playerServer.createContext("/player/", exchange -> {
-                String path = exchange.getRequestURI().getPath();
-                String videoId = path.substring("/player/".length());
 
-                if (!videoId.matches("[a-zA-Z0-9_-]{11}")) {
-                    exchange.sendResponseHeaders(400, -1);
-                    exchange.close();
-                    return;
-                }
+                try {
+                    String path = exchange.getRequestURI().getPath();
+                    String videoId = path.substring("/player/".length());
 
-                String origin = "http://localhost:" + playerServerPort;
-
-                String html = """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                <meta charset="UTF-8">
-                <meta name="referrer" content="strict-origin-when-cross-origin">
-                <style>
-                   html, body {
-                     margin: 0;
-                     padding: 0;
-                     width: 100%;
-                     height: 100%;
-                     background: #000;
-                     overflow: hidden;
-                     }
-                     
-                    #player {
-                     position: absolute;
-                     inset: 0;
-                     width: 100%;
-                     height: 100%;
-                     }  
-                         
-                    #player iframe {
-                     width: 100% !important;
-                     height: 100% !important;
-                     border: 0;
-                     }
-                </style>
-                </head>
-                <body>
-                
-                <div id="player" referrerpolicy="strict-origin-when-cross-origin"></div>
-                
-                <script>
-                window.player = null;
-                window.isReady = false;
-                window.repeatEnabled = false;
-                window.pendingVideoId = 'VIDEO_ID';
-                window.pendingCommands = [];
-
-                function debug(message) {
-                    console.log("[JS] " + message);
-                }
-
-                //
-                //PLAYER READY CHECK
-                //
-                window.isPlayerReady = function() {
-                    return window.isReady &&
-                           window.player !== null;
-                };
-                
-                //
-                // LOAD YOUTUBE API
-                //
-                var tag = document.createElement('script');
-                tag.src = "https://www.youtube.com/iframe_api";
-
-                document.head.appendChild(tag);
-
-                window.onYouTubeIframeAPIReady = function() {
-                debug("YouTube API loaded");
-
-                window.player = new YT.Player('player', {
-                    width: '100%',
-                    height: '100%',
-                    videoId: window.pendingVideoId,
-
-                    playerVars: {
-                        autoplay: 1,
-                        controls: 0,
-                        disablekb: 1,
-                        playsinline: 1,
-                        enablejsapi: 1,
-                        origin: '__PLAYER_ORIGIN__'
-                    },
-
-                    events: {
-                    onReady: function(event) {
-                        window.isReady = true;
-
-                        debug("Player READY");
-
-                        while (window.pendingCommands.length > 0) {
-                            window.pendingCommands.shift()();
-                        }
-                    },
-                    onStateChange: function(event) {
-                        var states = {
-                            "-1": "UNSTARTED",
-                            "0": "ENDED",
-                            "1": "PLAYING",
-                            "2": "PAUSED",
-                            "3": "BUFFERING",
-                            "5": "CUED"
-                        };
-
-                        debug("Player state: " + states[event.data]);
-
-                        if (event.data === YT.PlayerState.BUFFERING) {
-                            debug("Started buffering");
-                        }
-
-                        if (event.data === YT.PlayerState.PLAYING) {
-                        
-                                     debug("Playback started");
-                        
-                                     window.cefQuery({
-                                         request: JSON.stringify({
-                                             type: "playing"
-                                         }),
-                                         persistent: false,
-                                         onSuccess: function(response) {},
-                                         onFailure: function(code, message) {
-                                             console.error("[JCEF]", message);
-                                         }
-                                     });
-                                 }
-
-                        if (event.data === YT.PlayerState.PAUSED) {
-                            debug("Player paused");
-                        }
-
-                        if (event.data === YT.PlayerState.ENDED &&
-                            window.repeatEnabled) {
-
-                            debug("Repeating video");
-                            window.player.playVideo();
-                        }
-                    },
-                   onError: function(event) {
-                        
-                                 const errors = {
-                                     2: "Invalid video ID or parameter",
-                                     5: "HTML5 player error",
-                                     100: "Video unavailable or private",
-                                     101: "Embedding disabled by video owner",
-                                     150: "Embedding disabled by video owner",
-                                     153: "Missing HTTP Referer or client identification"
-                                 };
-                        
-                                 console.error(
-                                     "[YOUTUBE ERROR]",
-                                     event.data,
-                                     errors[event.data] || "Unknown error"
-                                 );
-                        
-                                 console.log("[PLAYER URL]", window.location.href);
-                                 console.log("[PLAYER ORIGIN]", window.location.origin);
-                             }
-                    }
-                });
-                };
-
-                //
-                //COMMAND QUEUE
-                //
-                function executeWhenReady(callback) {
-
-                    if (window.isPlayerReady()) {
-                        callback();
-                    } else {
-                        window.pendingCommands.push(callback);
-                    }
-                }
-
-                //
-                //VIDEO CONTROLS
-                //
-                window.loadNewVideo = function(videoId) {
-
-                    if (!window.isPlayerReady()) {
-                        window.pendingVideoId = videoId;
+                    if (!videoId.matches("[a-zA-Z0-9_-]{11}")) {
+                        exchange.sendResponseHeaders(400, -1);
                         return;
                     }
 
-                    window.pendingVideoId = videoId;
+                    String origin = "http://localhost:" + playerServerPort;
 
-                    debug("Loading video: " + videoId);
 
-                    window.player.loadVideoById({
-                        videoId: videoId,
-                        startSeconds: 0
-                    });
-                };
+                    String html;
+                    try (InputStream input = getClass()
+                            .getResourceAsStream("/html/player.html")) {
 
-                window.playVideo = function() {
-                    executeWhenReady(function() {
-                        debug("Play requested");
-                        window.player.playVideo();
-                    });
-                };
-
-                window.pauseVideo = function() {
-                    executeWhenReady(function() {
-                        debug("Pause requested");
-                        window.player.pauseVideo();
-                    });
-                };
-
-                window.stopVideo = function() {
-                    executeWhenReady(function() {
-                        debug("Stop requested");
-                        window.player.stopVideo();
-                    });
-                };
-
-                //
-                // PLAYBACK INFORMATION TO JAVA
-                //
-                window.lastProgress = {
-                    current: 0,
-                    duration: 0
-                };
-
-                setInterval(function() {
-                    if (!window.isPlayerReady()) return;
-
-                    const current = window.player.getCurrentTime();
-                    const duration = window.player.getDuration();
-
-                    if (duration <= 0) return;
-
-                    window.lastProgress.current = current;
-                    window.lastProgress.duration = duration;
-
-                    if (typeof window.cefQuery !== "function") {
-                        console.error("[JCEF] cefQuery is unavailable");
-                        return;
-                    }
-
-                    window.cefQuery({
-                        request: JSON.stringify({
-                            type: "progress",
-                            current: current,
-                            duration: duration
-                        }),
-
-                        persistent: false,
-
-                        onSuccess: function(response) {
-                            console.log("[JCEF] Progress received by Java");
-                        },
-
-                        onFailure: function(code, message) {
-                            console.error("[JCEF] Query failed:", code, message);
+                        if (input == null) {
+                            throw new IOException("player.html not found!");
                         }
-                    });
-                }, 500);
 
-                //
-                // SEEK
-                //
-                window.seekVideo = function(seconds) {
-                    if (!window.isPlayerReady()) {
-                        debug("Player not ready");
-                        return;
+                        html = new String(
+                                input.readAllBytes(),
+                                StandardCharsets.UTF_8
+                        );
                     }
 
-                    const duration = window.player.getDuration();
+                    html = html
+                            .replace("VIDEO_ID", videoId)
+                            .replace("__PLAYER_ORIGIN__", origin);
 
-                    if (!duration || duration <= 0) {
-                        debug("Invalid duration");
-                        return;
-                    }
+                    byte[] response = html.getBytes(StandardCharsets.UTF_8);
 
-                    const target = Math.max(
-                        0,
-                        Math.min(Number(seconds), duration)
+                    Headers headers = exchange.getResponseHeaders();
+
+                    headers.set("Content-Type", "text/html; charset=UTF-8");
+                    headers.set("Access-Control-Allow-Origin", "*");
+                    headers.set(
+                            "Referrer-Policy",
+                            "strict-origin-when-cross-origin"
                     );
+                    headers.set("Cache-Control", "no-store");
+                    headers.set("X-Content-Type-Options", "nosniff");
 
-                    debug("Seeking to: " + target);
+                    exchange.sendResponseHeaders(200, response.length);
 
-                    window.player.seekTo(target, true);
+                    try (OutputStream output = exchange.getResponseBody()) {
+                        output.write(response);
+                    }
 
-                    debug("Current time after seek: " +
-                        window.player.getCurrentTime());
-                };
+                } catch (Exception e) {
+                    e.printStackTrace();
 
-                //
-                //VOLUME AND REPEAT
-                //
-                window.setVolume = function(value) {
+                    if (exchange.getResponseCode() == -1) {
+                        exchange.sendResponseHeaders(500, -1);
+                    }
 
-                    executeWhenReady(function() {
-                        window.player.setVolume(value);
-                    });
-                };
-
-                window.setRepeatEnabled = function(enabled) {
-                    window.repeatEnabled = enabled;
-                    debug("Repeat: " + enabled);
-                };
-
-                //
-                //TIME INFORMATION
-                //
-                window.getCurrentTime = function() {
-
-                    if (!window.isPlayerReady()) return 0;
-
-                    return window.player.getCurrentTime();
-                };
-
-                window.getDuration = function() {
-
-                    if (!window.isPlayerReady()) return 0;
-
-                    return window.player.getDuration();
-                };
-                </script>
-                </body>
-                </html>
-                """;
-
-                html = html
-                        .replace("VIDEO_ID", videoId)
-                        .replace("__PLAYER_ORIGIN__", origin);
-
-                byte[] response = html.getBytes(StandardCharsets.UTF_8);
-
-                Headers headers = exchange.getResponseHeaders();
-                headers.set("Content-Type", "text/html; charset=UTF-8");
-                headers.set("Access-Control-Allow-Origin", "*");
-                headers.set(
-                        "Referrer-Policy",
-                        "strict-origin-when-cross-origin"
-                );
-                headers.set("Cache-Control", "no-store");
-                headers.set("X-Content-Type-Options", "nosniff");
-
-                exchange.sendResponseHeaders(200, response.length);
-
-                try (OutputStream output = exchange.getResponseBody()) {
-                    output.write(response);
+                } finally {
+                    exchange.close();
                 }
             });
 
             playerServer.start();
-            System.out.println("YouTube player server started: " + playerServerPort);
+
+            System.out.println(
+                    "YouTube player server started: " + playerServerPort
+            );
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
 
 
     private void initController() {
@@ -786,16 +546,11 @@ public class MusicController {
             return;
         }
 
-
-        if (playerPageLoaded && videoId.equals(loadedVideoId)) {
-            System.out.println("[JCEF] Video already loaded, skipping reload: " + videoId);
-            return;
-        }
-
         loadedVideoId = videoId;
         currentVideoId = videoId;
 
         if (!playerPageLoaded) {
+
             String url = "http://localhost:"
                     + playerServerPort
                     + "/player/"
@@ -803,16 +558,22 @@ public class MusicController {
 
             System.out.println("[JCEF] Initial loading: " + url);
 
-            cefBrowser.loadURL(url);
             playerPageLoaded = true;
+            cefBrowser.loadURL(url);
 
         } else {
-            System.out.println("[JCEF] Switching video via JS command: " + videoId);
+
+            System.out.println("[JCEF] Switching video: " + videoId);
 
             executePlayerCommand(
                     "window.loadNewVideo('" + videoId + "')"
             );
         }
+
+        // Start playback after the YouTube player is ready.
+        executePlayerCommand(
+                "window.playVideo()"
+        );
     }
 
     private void handleJamAction() {
@@ -958,6 +719,10 @@ public class MusicController {
                 }
             }
         }.execute();
+
+        if(cefClient == null) {
+            initCef();
+        }
     }
 
     private void handleTrackSelection(Music track) {
@@ -986,7 +751,6 @@ public class MusicController {
             currentVideoId = videoId;
 
             loadVideoInApp(videoId);
-
             broadcastCurrentState();
         }
     }
@@ -1232,6 +996,22 @@ public class MusicController {
 
     public MusicView getView() {
         return view;
+    }
+
+    public void releaseBrowserFocus() {
+        if (cefBrowser == null) {
+            return;
+        }
+
+        SwingUtilities.invokeLater(() -> {
+            cefBrowser.setFocus(false);
+            System.out.println("[JCEF] Native browser focus released");
+        });
+    }
+
+    public void initCef()
+    {
+        initCefPlayer();
     }
 
 
