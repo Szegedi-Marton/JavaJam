@@ -68,6 +68,35 @@ jobs:
           git switch -c "${BRANCH_NAME}"
 
           echo "branch=${BRANCH_NAME}" >> "$GITHUB_OUTPUT"
+          
+
+      - name: Diagnose Gemini environment
+        shell: bash
+        env:
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
+        run: |
+          set -euo pipefail
+      
+          echo "Gemini CLI version:"
+          gemini --version
+      
+          echo "Working directory:"
+          pwd
+      
+          echo "Workspace trust:"
+          echo "$GEMINI_CLI_TRUST_WORKSPACE"
+      
+          echo "Git status:"
+          git status --short
+      
+          echo "Project files:"
+          ls -la
+      
+          echo "Java version:"
+          java -version
+      
+          echo "Maven version:"
+          mvn --version
 
       # --------------------------------------------------
       # 3. Run Gemini CLI
