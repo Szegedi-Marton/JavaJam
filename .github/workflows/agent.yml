@@ -11,19 +11,47 @@ permissions:
 
 jobs:
   gemini-assistant:
-    # Only run if it's a comment AND the comment text contains '@gemini-cli'
     if: |
       github.event_name == 'issue_comment' &&
+      github.event.comment.user.login == 'szmartin16' &&
       contains(github.event.comment.body, '@gemini-cli')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git for Agent
+        run: |
+          git config user.name "gemini-cli[bot]"
+          git config user.email "gemini-cli[bot]@users.noreply.github.com"
 
       - name: Run Gemini CLI Agent
         uses: google-github-actions/run-gemini-cli@v0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_model: 'gemini-3.5-flash-lite'
+          settings: |
+            {
+              "sandbox": false
+            }
+          prompt: |
+            You are an autonomous coding assistant for ${{ github.repository }}.
+            A user commented on issue #${{ github.event.issue.number }} ("${{ github.event.issue.title }}"):
+            "${{ github.event.comment.body }}"
+
+            Instructions:
+            1. If the user is only asking a question, inspect the codebase and reply using:
+               gh issue comment ${{ github.event.issue.number }} --body "YOUR_RESPONSE"
+            2. If the user asks you to write, fix, or refactor code:
+               - Create and checkout a new branch (e.g., `git checkout -b ai/issue-${{ github.event.issue.number }}`)
+               - Make the code changes and verify compilation with `mvn test-compile` if applicable
+               - Commit and push the branch (`git push -u origin HEAD`)
+               - Open a Pull Request linking issue #${{ github.event.issue.number }} using `gh pr create --fill`
+               - Comment on issue #${{ github.event.issue.number }} with a link to the PR.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
+          CI: 'true'
