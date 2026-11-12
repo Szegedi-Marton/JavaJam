@@ -1,4 +1,3 @@
-
 package com.javaJam.network;
 
 import com.javaJam.controller.MusicController;
@@ -44,20 +43,23 @@ public class JamManager {
                 serverSocket = new ServerSocket(port);
                 isConnected = true;
 
-                System.out.println("Jam server started on port " + port);
+                System.out.println("[JAM HOST] Jam server started successfully on port " + port);
 
                 while (!serverSocket.isClosed()) {
 
                     Socket socket = serverSocket.accept();
+                    System.out.println("[JAM HOST] New client connected from: " + socket.getRemoteSocketAddress());
 
                     PrintWriter writer = new PrintWriter(
                             socket.getOutputStream(), true
                     );
 
                     clientWriters.add(writer);
+                    System.out.println("[JAM HOST] Active client connections: " + clientWriters.size());
 
                     // Send latest state to newly connected client
                     if (latestState != null) {
+                        System.out.println("[JAM HOST] Syncing latest state to newly joined client...");
                         writer.println(latestState);
                     }
 
@@ -68,10 +70,11 @@ public class JamManager {
 
             } catch (IOException e) {
                 if (isConnected) {
+                    System.err.println("[JAM HOST ERROR] Server socket exception: " + e.getMessage());
                     e.printStackTrace();
                 }
             }
-        }).start();
+        }, "Jam-Host-Thread").start();
     }
 
 
@@ -79,11 +82,13 @@ public class JamManager {
     public void joinHost(String ipAddress, int port) {
 
         isHost = false;
+        System.out.println("[JAM CLIENT] Attempting to connect to host at " + ipAddress + ":" + port + "...");
 
         new Thread(() -> {
             try {
 
                 clientSocket = new Socket(ipAddress, port);
+                System.out.println("[JAM CLIENT] Successfully connected to host: " + clientSocket.getRemoteSocketAddress());
 
                 out = new PrintWriter(
                         clientSocket.getOutputStream(), true
@@ -101,11 +106,12 @@ public class JamManager {
                 String line;
 
                 while ((line = in.readLine()) != null) {
+                    System.out.println("[JAM CLIENT] Received from host -> " + line);
                     handleIncomingCommand(line);
                 }
 
             } catch (IOException e) {
-
+                System.err.println("[JAM CLIENT ERROR] Connection dropped or failed: " + e.getMessage());
                 isConnected = false;
 
                 SwingUtilities.invokeLater(() ->
@@ -117,24 +123,49 @@ public class JamManager {
 
             } finally {
                 isConnected = false;
+                System.out.println("[JAM CLIENT] Disconnected from host session.");
             }
-        }).start();
+        }, "Jam-Client-Thread").start();
     }
 
     // SEND COMMAND
     public void sendToHost(String command) {
-
         if (!isHost && isConnected && out != null) {
+            System.out.println("[JAM CLIENT] Sending to host -> " + command);
             out.println(command);
+        } else {
+            System.out.println("[JAM CLIENT WARNING] Failed to send to host. Connected: " + isConnected + ", Out writer ready: " + (out != null));
         }
+    }
+
+    // Send a track change request from client to host (or host broadcast)
+    public void sendSelectTrackCommand(String videoId, String trackName) {
+        String encodedName = Base64.getEncoder().encodeToString(trackName.getBytes(StandardCharsets.UTF_8));
+        String command = "CONTROL|SELECT_TRACK|" + videoId + "|" + encodedName;
+
+        if (isHost) {
+            System.out.println("[JAM HOST] Executing local track selection -> " + trackName);
+            handleControlCommand(command);
+        } else {
+            System.out.println("[JAM CLIENT] Transmitting track selection to host -> " + trackName);
+            sendToHost(command);
+        }
+    }
+
+    // Overload control command dispatcher for actions without numeric parameters (like NEXT, PREVIOUS, SHUFFLE, STOP)
+    public void sendControlCommand(String action) {
+        sendControlCommand(action, 0.0);
     }
 
     // BROADCAST TO EVERYONE
 
     public void broadcast(String command) {
+        if (!isHost) {
+            System.out.println("[JAM HOST WARNING] Non-host tried to broadcast.");
+            return;
+        }
 
-        if (!isHost) return;
-
+        System.out.println("[JAM HOST] Broadcasting to " + clientWriters.size() + " clients -> " + command);
         for (PrintWriter writer : clientWriters) {
             writer.println(command);
         }
@@ -162,13 +193,11 @@ public class JamManager {
         );
 
         if (isHost) {
-
             latestState = state;
-
+            System.out.println("[JAM HOST] Broadcasting state update [Video: " + videoId + ", Pos: " + position + ", Playing: " + playing + "]");
             broadcast(state);
-
         } else {
-
+            System.out.println("[JAM CLIENT] Sending state update to host [Video: " + videoId + ", Pos: " + position + ", Playing: " + playing + "]");
             sendToHost(state);
         }
     }
@@ -176,39 +205,41 @@ public class JamManager {
 
     // RECEIVE COMMAND
     private void handleIncomingCommand(String cmd) {
+        if (cmd.startsWith("STATE|")) {
+            String[] parts = cmd.split("\\|", 5);
+            if (parts.length != 5) {
+                System.out.println("[JAM PARSE WARNING] Malformed STATE command: " + cmd);
+                return;
+            }
 
-        String[] parts = cmd.split("\\|", 5);
+            try {
+                String videoId = parts[1];
+                double position = Double.parseDouble(parts[2]);
+                boolean playing = Boolean.parseBoolean(parts[3]);
+                String trackName = new String(
+                        Base64.getDecoder().decode(parts[4]),
+                        StandardCharsets.UTF_8
+                );
 
-        if (parts.length != 5 || !parts[0].equals("STATE")) {
-            return;
-        }
+               // System.out.println("[JAM SYNC] Processing incoming state -> Track: '" + trackName + "' [ID: " + videoId + "]");
 
-        try {
-
-            String videoId = parts[1];
-
-            double position = Double.parseDouble(parts[2]);
-
-            boolean playing = Boolean.parseBoolean(parts[3]);
-
-            String trackName = new String(
-                    Base64.getDecoder().decode(parts[4]),
-                    StandardCharsets.UTF_8
-            );
-
-            SwingUtilities.invokeLater(() ->
-                    musicController.syncFromHost(
-                            videoId,
-                            position,
-                            playing,
-                            trackName
-                    )
-            );
-
-        } catch (Exception e) {
-            System.err.println(
-                    "Invalid playback state: " + e.getMessage()
-            );
+                SwingUtilities.invokeLater(() ->
+                        musicController.syncFromHost(
+                                videoId,
+                                position,
+                                playing,
+                                trackName
+                        )
+                );
+            } catch (Exception e) {
+                System.err.println("[JAM ERROR] Failed to parse state payload: " + e.getMessage());
+            }
+        } else if (cmd.startsWith("CONTROL|")) {
+            // Clients also need to process control commands broadcasted down from the host!
+            System.out.println("[JAM CLIENT] Received control command from host -> " + cmd);
+            handleControlCommand(cmd);
+        } else {
+            System.out.println("[JAM PARSE WARNING] Ignored unknown command: " + cmd);
         }
     }
 
@@ -226,6 +257,7 @@ public class JamManager {
 
         @Override
         public void run() {
+            System.out.println("[JAM HOST HANDLER] Started handler thread for client: " + socket.getRemoteSocketAddress());
 
             try (
                     BufferedReader reader = new BufferedReader(
@@ -239,17 +271,17 @@ public class JamManager {
                 String line;
 
                 while ((line = reader.readLine()) != null) {
-
+                    System.out.println("[JAM HOST HANDLER] Received control message from client -> " + line);
                     if (line.startsWith("CONTROL|")) {
                         handleControlCommand(line);
                     }
                 }
 
             } catch (IOException e) {
-                System.out.println("Client disconnected.");
+                System.out.println("[JAM HOST HANDLER] Client disconnected abruptly: " + socket.getRemoteSocketAddress());
             } finally {
-
                 clientWriters.remove(writer);
+                System.out.println("[JAM HOST HANDLER] Cleaned up client writer. Remaining clients: " + clientWriters.size());
 
                 try {
                     socket.close();
@@ -264,66 +296,84 @@ public class JamManager {
         String command = "CONTROL|" + action + "|" + position;
 
         if (isHost) {
+            System.out.println("[JAM HOST] Executing local control action -> " + command);
             handleControlCommand(command);
         } else {
+            System.out.println("[JAM CLIENT] Transmitting control action to host -> " + command);
             sendToHost(command);
         }
     }
 
     private void handleControlCommand(String command) {
+        String[] parts = command.split("\\|", 4);
 
-        String[] parts = command.split("\\|", 3);
-
-        if (parts.length != 3 || !parts[0].equals("CONTROL")) {
+        if (parts.length < 2 || !parts[0].equals("CONTROL")) {
+            System.out.println("[JAM CONTROL WARNING] Invalid control command format: " + command);
             return;
         }
 
         String action = parts[1];
 
-        double position;
 
-        try {
-            position = Double.parseDouble(parts[2]);
-        } catch (NumberFormatException e) {
+        if (action.equals("SELECT_TRACK") && parts.length >= 4) {
+            String videoId = parts[2];
+            String trackName = new String(Base64.getDecoder().decode(parts[3]), StandardCharsets.UTF_8);
+
+            System.out.println("[JAM CONTROL] Dispatching remote track selection: " + trackName + " [" + videoId + "]");
+            SwingUtilities.invokeLater(() -> musicController.remoteSelectTrack(videoId, trackName));
+
+            if (isHost) {
+                broadcast(command);
+            }
             return;
         }
 
+
+        double position = 0.0;
+        if (parts.length >= 3) {
+            try {
+                position = Double.parseDouble(parts[2]);
+            } catch (NumberFormatException e) {
+
+            }
+        }
+
+        final double finalPos = position;
+        System.out.println("[JAM CONTROL] Dispatching action: " + action + " with param: " + finalPos);
+
         SwingUtilities.invokeLater(() -> {
-
             switch (action) {
-
                 case "PLAY":
                     musicController.remotePlay();
                     break;
-
                 case "PAUSE":
                     musicController.remotePause();
                     break;
-
                 case "SEEK":
-                    musicController.remoteSeek(position);
+                    musicController.remoteSeek(finalPos);
                     break;
-
                 case "NEXT":
                     musicController.remoteNext();
                     break;
-
                 case "PREVIOUS":
                     musicController.remotePrevious();
                     break;
-
                 case "SHUFFLE":
                     musicController.remoteShuffle();
                     break;
-
                 case "STOP":
                     musicController.remoteStop();
                     break;
+                default:
+                    System.out.println("[JAM CONTROL WARNING] Unhandled action type: " + action);
+                    break;
             }
-
         });
-    }
 
+        if (isHost) {
+            broadcast(command);
+        }
+    }
 
     // STATUS
     public boolean isConnected() {
