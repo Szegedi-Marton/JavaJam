@@ -14,6 +14,7 @@ import org.cef.browser.CefFrame;
 import org.cef.browser.CefMessageRouter;
 import org.cef.callback.CefQueryCallback;
 import org.cef.handler.CefDisplayHandlerAdapter;
+import org.cef.handler.CefLoadHandlerAdapter;
 import org.cef.handler.CefMessageRouterHandler;
 import com.javaJam.service.YoutubeScraperService;
 import com.javaJam.view.MusicView;
@@ -89,6 +90,10 @@ public class MusicController {
 
                 builder.getCefSettings()
                         .windowless_rendering_enabled = false;
+
+                builder.addJcefArgs(
+                        "--autoplay-policy=no-user-gesture-required"
+                );
 
                 cefApp = builder.build();
 
@@ -184,6 +189,27 @@ public class MusicController {
                 messageRouter.addHandler(progressHandler, true);
 
                 cefClient.addMessageRouter(messageRouter);
+
+                // Inside your JCEF initialization code (where cefClient and cefBrowser are created)
+                cefClient.addLoadHandler(new CefLoadHandlerAdapter() {
+                    @Override
+                    public void onLoadEnd(CefBrowser browser, CefFrame frame, int httpStatusCode) {
+                        // Ensure it's our main frame and the page successfully loaded
+                        if (frame.isMain() && httpStatusCode == 200) {
+                            String currentUrl = browser.getURL();
+                            if (currentUrl != null && currentUrl.contains("/player/")) {
+                                System.out.println("[JCEF] Player page load complete. Sending initial JS start command...");
+
+                                // Small delay or direct execution to ensure DOM/YouTube IFrame API is fully ready
+                                SwingUtilities.invokeLater(() -> {
+                                    if (isPlaying) {
+                                        executePlayerCommand("if(typeof playVideo === 'function') { playVideo(); }");
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
 
                 cefClient.addDisplayHandler(new CefDisplayHandlerAdapter() {
 
@@ -283,6 +309,19 @@ public class MusicController {
                 function debug(message) {
                     console.log("[JS] " + message);
                 }
+                
+                window.startInitialPlayback = function() {
+                
+                    if (!window.isPlayerReady()) {
+                        debug("Player not ready yet");
+                        return;
+                    }
+                
+                    debug("Starting initial playback");
+                
+                    window.player.mute();
+                    window.player.playVideo();
+                };
 
                 //
                 //PLAYER READY CHECK
@@ -318,15 +357,17 @@ public class MusicController {
                     },
 
                     events: {
-                    onReady: function(event) {
-                        window.isReady = true;
-
-                        debug("Player READY");
-
-                        while (window.pendingCommands.length > 0) {
-                            window.pendingCommands.shift()();
-                        }
-                    },
+                   onReady: function(event) {
+                       window.isReady = true;
+            
+                       debug("Player READY");
+            
+                       while (window.pendingCommands.length > 0) {
+                           window.pendingCommands.shift()();
+                       }
+            
+                       window.startInitialPlayback();
+                   },
                     onStateChange: function(event) {
                         var states = {
                             "-1": "UNSTARTED",
@@ -346,6 +387,8 @@ public class MusicController {
                         if (event.data === YT.PlayerState.PLAYING) {
                         
                                      debug("Playback started");
+                                     
+                                     window.player.unMute();
                         
                                      window.cefQuery({
                                          request: JSON.stringify({
@@ -410,21 +453,20 @@ public class MusicController {
                 //VIDEO CONTROLS
                 //
                 window.loadNewVideo = function(videoId) {
-
-                    if (!window.isPlayerReady()) {
-                        window.pendingVideoId = videoId;
-                        return;
-                    }
-
-                    window.pendingVideoId = videoId;
-
-                    debug("Loading video: " + videoId);
-
-                    window.player.loadVideoById({
-                        videoId: videoId,
-                        startSeconds: 0
-                    });
-                };
+                
+                       window.pendingVideoId = videoId;
+                
+                       executeWhenReady(function() {
+                
+                           debug("Loading video: " + videoId);
+                
+                           window.player.loadVideoById({
+                               videoId: videoId,
+                               startSeconds: 0
+                           });
+                
+                       });
+                   };
 
                 window.playVideo = function() {
                     executeWhenReady(function() {
@@ -786,16 +828,11 @@ public class MusicController {
             return;
         }
 
-
-        if (playerPageLoaded && videoId.equals(loadedVideoId)) {
-            System.out.println("[JCEF] Video already loaded, skipping reload: " + videoId);
-            return;
-        }
-
         loadedVideoId = videoId;
         currentVideoId = videoId;
 
         if (!playerPageLoaded) {
+
             String url = "http://localhost:"
                     + playerServerPort
                     + "/player/"
@@ -803,16 +840,22 @@ public class MusicController {
 
             System.out.println("[JCEF] Initial loading: " + url);
 
-            cefBrowser.loadURL(url);
             playerPageLoaded = true;
+            cefBrowser.loadURL(url);
 
         } else {
-            System.out.println("[JCEF] Switching video via JS command: " + videoId);
+
+            System.out.println("[JCEF] Switching video: " + videoId);
 
             executePlayerCommand(
                     "window.loadNewVideo('" + videoId + "')"
             );
         }
+
+        // Start playback after the YouTube player is ready.
+        executePlayerCommand(
+                "window.playVideo()"
+        );
     }
 
     private void handleJamAction() {
@@ -986,7 +1029,6 @@ public class MusicController {
             currentVideoId = videoId;
 
             loadVideoInApp(videoId);
-
             broadcastCurrentState();
         }
     }
