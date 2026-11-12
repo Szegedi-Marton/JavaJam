@@ -77,7 +77,7 @@ jobs:
         timeout-minutes: 20
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          gemini_model: gemini-3.8-flash
+          gemini_model: gemini-3.8-flash-lite
           gemini_debug: false
           settings: |
             {
