@@ -80,16 +80,18 @@ JavaJam lets you share your listening experience with friends.
 ## 📸 Screenshots
 <div align="center">
 
-  <img width="100%" alt="First screenshot" src="https://github.com/user-attachments/assets/ed4fe3ee-169b-43ed-8c1a-68005194cb60" />
-  
-  <sub>UI and application preview</sub>
-
-  <br /><br />
 
   <img width="100%" alt="Second screenshot" src="https://github.com/user-attachments/assets/3baea2a5-92ee-49e2-b6ac-559e45897774" />
   
   <sub>Primitive launching UI</sub>
 
+  <br /><br />
+  
+  <img width="1181" height="785" alt="image" src="https://github.com/user-attachments/assets/3b0a0e8b-4adf-427c-ba56-cff23cf40b83" />
+
+
+  <sub>New version UI preview</sub>
+    
 </div>
 
 ## 🗺️ Roadmap
@@ -100,7 +102,7 @@ JavaJam lets you share your listening experience with friends.
 - [x] Playback controls
 - [x] Shuffle and repeat
 - [x] Listen-together functionality
-- [ ] Improved playback synchronization
+- [x] Improved playback synchronization
 - [ ] Custom playlists
 - [ ] User profiles
 - [ ] Friends system
