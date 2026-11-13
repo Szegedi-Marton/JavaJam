@@ -22,15 +22,17 @@ public class MusicView extends JFrame {
     private JLabel currentTimeLabel;
     private JLabel durationLabel;
     private JLabel nowPlayingLabel;
-    private JButton settingsButton;
     private JTextField searchField;
     private JButton profileButton;
     private JButton prevButton;
-    private JButton stopButton;
     private JButton nextButton;
     private JButton shuffleButton;
     private JButton jamButton;
     private JSlider volumeSlider;
+    private final JMenuItem profileMenuItem = new JMenuItem("Profile");
+    private final JMenuItem settingsMenuItem = new JMenuItem("Settings");
+    private JPopupMenu profileMenu;
+
 
     public final Color bgDark = new Color(0, 0, 0);
     public final Color panelDark = new Color(0, 0, 0);
@@ -47,51 +49,57 @@ public class MusicView extends JFrame {
         getContentPane().setBackground(bgDark);
 
         //TOP NAV
-        JPanel topNavPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 10));
+        JPanel topNavPanel = new JPanel(new BorderLayout());
         topNavPanel.setBackground(panelDark);
+        topNavPanel.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
 
-        settingsButton = createStyledButton("icons/settings.svg", buttonDark, textLight);
+        //Search Bar
+        JPanel leftNav = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        leftNav.setBackground(panelDark);
+
+        JLabel searchLabel = new JLabel("Search:");
+        searchLabel.setForeground(textLight);
+
         searchField = new JTextField(20);
         searchField.setBackground(bgDark);
         searchField.setForeground(textLight);
         searchField.setCaretColor(textLight);
-
         searchField.setFocusable(true);
         searchField.setRequestFocusEnabled(true);
 
         searchField.addMouseListener(new java.awt.event.MouseAdapter() {
-
             @Override
             public void mousePressed(java.awt.event.MouseEvent e) {
-
                 SwingUtilities.invokeLater(() -> {
-
                     if (musicController != null) {
                         musicController.releaseBrowserFocus();
                     }
-
                     searchField.requestFocusInWindow();
                     searchField.grabFocus();
-
-                    System.out.println(
-                            "[SWING] Search focus: " +
-                                    searchField.isFocusOwner()
-                    );
-
+                    System.out.println("[SWING] Search focus: " + searchField.isFocusOwner());
                 });
             }
         });
 
-        profileButton = createStyledButton("icons/profile.svg", buttonDark, textLight);
-
-        topNavPanel.add(settingsButton);
-        JLabel searchLabel = new JLabel("Search:");
-        searchLabel.setForeground(textLight);
-        topNavPanel.add(searchLabel);
-        topNavPanel.add(searchField);
+        leftNav.add(searchLabel);
+        leftNav.add(searchField);
+        topNavPanel.add(leftNav, BorderLayout.WEST);
         setupFocusHandling();
 
-        topNavPanel.add(profileButton);
+        //Profile menu
+        JPanel rightNav = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        rightNav.setBackground(panelDark);
+
+        profileButton = createStyledButton("icons/profile.svg", buttonDark, textLight);
+
+
+        profileMenu = new JPopupMenu();
+        profileMenu.add(profileMenuItem);
+        profileMenu.add(settingsMenuItem);
+
+
+        rightNav.add(profileButton);
+        topNavPanel.add(rightNav, BorderLayout.EAST);
         add(topNavPanel, BorderLayout.NORTH);
 
         //List view n Web player
@@ -101,6 +109,7 @@ public class MusicView extends JFrame {
         musicListUI.setForeground(textLight);
         musicListUI.setSelectionBackground(accentColor);
         musicListUI.setSelectionForeground(Color.WHITE);
+        musicListUI.setFixedCellHeight(36);
 
         musicListUI.setCellRenderer(new DefaultListCellRenderer() {
             @Override
@@ -116,8 +125,10 @@ public class MusicView extends JFrame {
                 );
 
                 if (value instanceof Music) {
-                    setText(((Music) value).getName());
+                    setText("   " + ((Music) value).getName());
                 }
+
+                setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
                 return this;
             }
@@ -138,7 +149,6 @@ public class MusicView extends JFrame {
         splitPane.setDividerLocation(300);
         splitPane.setBackground(bgDark);
         add(splitPane, BorderLayout.CENTER);
-
 
         //BOTTOM MUSIC PLAYER
         JPanel bottomBar = new JPanel(new BorderLayout(10, 5));
@@ -174,15 +184,15 @@ public class MusicView extends JFrame {
 
         controlsPanel.add(seekPanel, BorderLayout.NORTH);
 
+        //Buttons Panel
         JPanel buttonsPanel = new JPanel(
-                new FlowLayout(FlowLayout.CENTER, 12, 5)
+                new FlowLayout(FlowLayout.CENTER, 6, 5)
         );
         buttonsPanel.setBackground(panelDark);
 
         shuffleButton = createStyledButton("icons/shuffle.svg", buttonDark, textLight);
         prevButton = createStyledButton("icons/prev.svg", buttonDark, textLight);
-        playPauseButton = createStyledButton("icons/play.svg", accentColor, Color.WHITE);
-        stopButton = createStyledButton("icons/stop.svg", buttonDark, textLight);
+        playPauseButton = createStyledButton("icons/play.svg", accentColor, Color.WHITE, 24, 24, new Insets(12, 12, 12, 12));
         nextButton = createStyledButton("icons/next.svg", buttonDark, textLight);
         repeatButton = createStyledButton("icons/repeat.svg", buttonDark, textLight);
         jamButton = createStyledButton("icons/jam.svg", buttonDark, textLight);
@@ -190,11 +200,11 @@ public class MusicView extends JFrame {
         buttonsPanel.add(shuffleButton);
         buttonsPanel.add(prevButton);
         buttonsPanel.add(playPauseButton);
-      //  buttonsPanel.add(stopButton);
         buttonsPanel.add(nextButton);
         buttonsPanel.add(repeatButton);
         buttonsPanel.add(jamButton);
 
+        //Volume Panel
         JPanel volumePanel = new JPanel(
                 new FlowLayout(FlowLayout.CENTER, 16, 8)
         );
@@ -210,9 +220,19 @@ public class MusicView extends JFrame {
         volumePanel.add(volumeLabel);
         volumePanel.add(volumeSlider);
 
+        //Balancing Left Spacer
+        JPanel leftSpacer = new JPanel();
+        leftSpacer.setBackground(panelDark);
+        leftSpacer.setPreferredSize(volumePanel.getPreferredSize());
 
-        controlsPanel.add(buttonsPanel, BorderLayout.CENTER);
-        controlsPanel.add(volumePanel, BorderLayout.EAST);
+        //Lower Controls Container
+        JPanel lowerControlsPanel = new JPanel(new BorderLayout());
+        lowerControlsPanel.setBackground(panelDark);
+        lowerControlsPanel.add(leftSpacer, BorderLayout.WEST);
+        lowerControlsPanel.add(buttonsPanel, BorderLayout.CENTER);
+        lowerControlsPanel.add(volumePanel, BorderLayout.EAST);
+
+        controlsPanel.add(lowerControlsPanel, BorderLayout.CENTER);
         bottomBar.add(controlsPanel, BorderLayout.CENTER);
         add(bottomBar, BorderLayout.SOUTH);
 
@@ -269,13 +289,12 @@ public class MusicView extends JFrame {
     }
 
 
-    // --- Helper Method ---
     private JButton createStyledButton(String iconPath, Color bg, Color fg) {
-        // Load the SVG icon and set a standard size (e.g., 18x18 pixels)
-        FlatSVGIcon icon = new FlatSVGIcon(iconPath, 18, 18);
+        return createStyledButton(iconPath, bg, fg, 18, 18, new Insets(8, 8, 8, 8));
+    }
 
-        // Optional: If your SVGs support color filtering/tinting to match the foreground color:
-        // icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> fg));
+    private JButton createStyledButton(String iconPath, Color bg, Color fg, int width, int height, Insets margin) {
+        FlatSVGIcon icon = new FlatSVGIcon(iconPath, width, height);
 
         JButton button = new JButton(icon);
 
@@ -293,9 +312,7 @@ public class MusicView extends JFrame {
         button.setFocusPainted(false);
         button.setBorderPainted(true);
         button.setContentAreaFilled(true);
-
-        // Padding adjusted slightly for square/icon-centric buttons
-        button.setMargin(new Insets(8, 8, 8, 8));
+        button.setMargin(margin);
 
         return button;
     }
@@ -304,8 +321,6 @@ public class MusicView extends JFrame {
     private void setupFocusHandling() {
 
         setFocusable(true);
-
-        // Explicitly request focus
         searchField.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -316,7 +331,6 @@ public class MusicView extends JFrame {
             }
         });
 
-        // Global Swing keyboard shortcuts.
         KeyboardFocusManager.getCurrentKeyboardFocusManager()
                 .addKeyEventDispatcher(event -> {
 
@@ -334,9 +348,6 @@ public class MusicView extends JFrame {
 
 
     // GETTERS
-    public JButton getSettingsButton() {
-        return settingsButton;
-    }
 
     public JTextField getSearchField() {
         return searchField;
@@ -346,12 +357,14 @@ public class MusicView extends JFrame {
         return profileButton;
     }
 
+    public JMenuItem getProfileMenuItem(){return profileMenuItem;}
+
+    public JMenuItem getSettingsMenuItem(){return settingsMenuItem;}
+
+    public JPopupMenu getProfileMenu() {return profileMenu;}
+
     public JButton getPrevButton() {
         return prevButton;
-    }
-
-    public JButton getStopButton() {
-        return stopButton;
     }
 
     public JButton getNextButton() {

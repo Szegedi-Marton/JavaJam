@@ -401,7 +401,6 @@ public class MusicController {
         // Play
         view.getPlayPauseButton().addActionListener(e -> togglePlayPause());
 
-
         // Previous
         view.getPrevButton().addActionListener(e -> {
 
@@ -411,7 +410,6 @@ public class MusicController {
                 playPreviousTrack();
             }
         });
-
 
         // Next
         view.getNextButton().addActionListener(e -> {
@@ -475,7 +473,19 @@ public class MusicController {
             }
         });
 
+        view.getProfileMenuItem().addActionListener(e -> {
+            // Handle profile click
+            System.out.println("Profile clicked");
+        });
 
+        view.getSettingsMenuItem().addActionListener(e -> {
+            // Handle settings click
+            System.out.println("Settings clicked");
+        });
+
+        view.getProfileButton().addActionListener(e -> {
+            view.getProfileMenu().show(view.getProfileButton(), 0, view.getProfileButton().getHeight());
+        });
     }
 
     public void playVideo() {
