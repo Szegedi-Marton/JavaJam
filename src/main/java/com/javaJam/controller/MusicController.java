@@ -19,6 +19,7 @@ import org.cef.handler.CefLoadHandlerAdapter;
 import org.cef.handler.CefMessageRouterHandler;
 import com.javaJam.service.YoutubeScraperService;
 import com.javaJam.view.MusicView;
+import org.json.JSONException;
 
 import javax.swing.*;
 import java.awt.*;
@@ -77,9 +78,15 @@ public class MusicController {
         this.jamManager = new JamManager(this);
 
         startPlayerServer();
-
         initController();
         startPlaybackTimer();
+        startupSequnce();
+    }
+
+    private void startupSequnce(){
+        if (view.getMusicListUI() != null) {
+            searchTracks("Top 10 music today");
+        }
     }
 
     private void initCefPlayer() {
@@ -163,9 +170,16 @@ public class MusicController {
                             }
 
                             if ("progress".equals(json.optString("type"))) {
+                                double current=0;
+                                double duration=0;
+                                try {
+                                    current = json.getDouble("current");
+                                    duration = json.getDouble("duration");
+                                }catch (JSONException e)
+                                {
+                                   System.out.println("Json error: "+ e);
+                                }
 
-                                double current = json.getDouble("current");
-                                double duration = json.getDouble("duration");
 
                                 currentVideoTime = current;
                                 videoDuration = duration;
@@ -208,6 +222,9 @@ public class MusicController {
                                 SwingUtilities.invokeLater(() -> {
                                     if (isPlaying) {
                                         executePlayerCommand("if(typeof playVideo === 'function') { playVideo(); }");
+                                    }
+                                    if (view.getVolumeSlider() != null) {
+                                        setPlayerVolume(view.getVolumeSlider().getValue());
                                     }
                                 });
                             }
@@ -384,15 +401,6 @@ public class MusicController {
         // Play
         view.getPlayPauseButton().addActionListener(e -> togglePlayPause());
 
-        // Stop
-        view.getStopButton().addActionListener(e -> {
-
-            if (jamManager.isConnected() && !jamManager.isHost()) {
-                jamManager.sendControlCommand("STOP", 0);
-            } else {
-                stopPlayback();
-            }
-        });
 
         // Previous
         view.getPrevButton().addActionListener(e -> {
@@ -566,11 +574,10 @@ public class MusicController {
             executePlayerCommand(
                     "window.loadNewVideo('" + videoId + "')"
             );
+            executePlayerCommand(
+                    "window.playVideo()"
+            );
         }
-
-        executePlayerCommand(
-                "window.playVideo()"
-        );
     }
 
     private void handleJamAction() {
