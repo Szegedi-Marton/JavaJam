@@ -1,5 +1,6 @@
 package com.javaJam.view;
 
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 import com.javaJam.controller.MusicController;
 import com.javaJam.model.Music;
 import javax.swing.*;
@@ -31,26 +32,25 @@ public class MusicView extends JFrame {
     private JButton jamButton;
     private JSlider volumeSlider;
 
+    public final Color bgDark = new Color(0, 0, 0);
+    public final Color panelDark = new Color(0, 0, 0);
+    public final Color textLight = new Color(220, 220, 220);
+    public final Color buttonDark = new Color(30, 30, 30);
+    public final Color accentColor = new Color(75, 110, 175);
+
 
     public MusicView() {
         setTitle("JavaJam");
         setSize(1200, 800);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
-
-        //Colors
-        Color bgDark = new Color(0, 0, 0);       //background
-        Color panelDark = new Color(0, 0, 0);
-        Color textLight = new Color(220, 220, 220); //white text
-        Color buttonDark = new Color(30, 30, 30);   //button background
-        Color accentColor = new Color(75, 110, 175);
         getContentPane().setBackground(bgDark);
 
         //TOP NAV
-        JPanel topNavPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        JPanel topNavPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 10));
         topNavPanel.setBackground(panelDark);
 
-        settingsButton = createStyledButton("Settings", buttonDark, textLight);
+        settingsButton = createStyledButton("icons/settings.svg", buttonDark, textLight);
         searchField = new JTextField(20);
         searchField.setBackground(bgDark);
         searchField.setForeground(textLight);
@@ -82,7 +82,7 @@ public class MusicView extends JFrame {
             }
         });
 
-        profileButton = createStyledButton("Profile", buttonDark, textLight);
+        profileButton = createStyledButton("icons/profile.svg", buttonDark, textLight);
 
         topNavPanel.add(settingsButton);
         JLabel searchLabel = new JLabel("Search:");
@@ -179,32 +179,28 @@ public class MusicView extends JFrame {
         );
         buttonsPanel.setBackground(panelDark);
 
-        shuffleButton = createStyledButton("Shuffle", buttonDark, textLight);
-        prevButton = createStyledButton("⏮", buttonDark, textLight);
-        playPauseButton = createStyledButton("▶", accentColor, Color.WHITE);
-        stopButton = createStyledButton("■", buttonDark, textLight);
-        nextButton = createStyledButton("⏭", buttonDark, textLight);
-        repeatButton = createStyledButton("Repeat", buttonDark, textLight);
-        jamButton = createStyledButton("Jam", buttonDark, textLight);
+        shuffleButton = createStyledButton("icons/shuffle.svg", buttonDark, textLight);
+        prevButton = createStyledButton("icons/prev.svg", buttonDark, textLight);
+        playPauseButton = createStyledButton("icons/play.svg", accentColor, Color.WHITE);
+        stopButton = createStyledButton("icons/stop.svg", buttonDark, textLight);
+        nextButton = createStyledButton("icons/next.svg", buttonDark, textLight);
+        repeatButton = createStyledButton("icons/repeat.svg", buttonDark, textLight);
+        jamButton = createStyledButton("icons/jam.svg", buttonDark, textLight);
 
         buttonsPanel.add(shuffleButton);
         buttonsPanel.add(prevButton);
         buttonsPanel.add(playPauseButton);
-        buttonsPanel.add(stopButton);
+      //  buttonsPanel.add(stopButton);
         buttonsPanel.add(nextButton);
         buttonsPanel.add(repeatButton);
         buttonsPanel.add(jamButton);
 
-        controlsPanel.add(buttonsPanel, BorderLayout.CENTER);
-
-        bottomBar.add(controlsPanel, BorderLayout.CENTER);
-
         JPanel volumePanel = new JPanel(
-                new FlowLayout(FlowLayout.CENTER, 8, 0)
+                new FlowLayout(FlowLayout.CENTER, 16, 8)
         );
         volumePanel.setBackground(panelDark);
 
-        JLabel volumeLabel = new JLabel("Volume");
+        JLabel volumeLabel = new JLabel(new FlatSVGIcon("icons/volume.svg", 18, 18));
         volumeLabel.setForeground(textLight);
 
         volumeSlider = new JSlider(0, 100, 50);
@@ -214,8 +210,10 @@ public class MusicView extends JFrame {
         volumePanel.add(volumeLabel);
         volumePanel.add(volumeSlider);
 
-        bottomBar.add(volumePanel, BorderLayout.SOUTH);
 
+        controlsPanel.add(buttonsPanel, BorderLayout.CENTER);
+        controlsPanel.add(volumePanel, BorderLayout.EAST);
+        bottomBar.add(controlsPanel, BorderLayout.CENTER);
         add(bottomBar, BorderLayout.SOUTH);
 
 
@@ -240,14 +238,6 @@ public class MusicView extends JFrame {
         setupSearchFocus();
     }
 
-
-    private JButton createStyledButton(String text, Color bg, Color fg) {
-        JButton button = new JButton(text);
-        button.setBackground(bg);
-        button.setForeground(fg);
-        button.setFocusPainted(false);
-        return button;
-    }
 
     private void setupSearchFocus() {
 
@@ -277,6 +267,39 @@ public class MusicView extends JFrame {
             }
         });
     }
+
+
+    // --- Helper Method ---
+    private JButton createStyledButton(String iconPath, Color bg, Color fg) {
+        // Load the SVG icon and set a standard size (e.g., 18x18 pixels)
+        FlatSVGIcon icon = new FlatSVGIcon(iconPath, 18, 18);
+
+        // Optional: If your SVGs support color filtering/tinting to match the foreground color:
+        // icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> fg));
+
+        JButton button = new JButton(icon);
+
+        button.putClientProperty("JButton.buttonType", "roundRect");
+        button.putClientProperty("JComponent.arc", 16);
+
+        if (bg != null) {
+            button.setBackground(bg);
+        }
+
+        if (fg != null) {
+            button.setForeground(fg);
+        }
+
+        button.setFocusPainted(false);
+        button.setBorderPainted(true);
+        button.setContentAreaFilled(true);
+
+        // Padding adjusted slightly for square/icon-centric buttons
+        button.setMargin(new Insets(8, 8, 8, 8));
+
+        return button;
+    }
+
 
     private void setupFocusHandling() {
 
