@@ -1,9 +1,11 @@
 package com.javaJam.controller;
 
 import com.formdev.flatlaf.FlatDarkLaf;
+import com.javaJam.service.FontLoader;
 import com.javaJam.view.MusicView;
 
 import javax.swing.*;
+import java.awt.*;
 
 
 public class MainController {
@@ -15,6 +17,9 @@ public class MainController {
 
     public MainController() {
 
+        Font customAppFont = FontLoader.loadResourceFont("/fonts/DynaPuff.ttf", 13f);
+
+        UIManager.put("defaultFont", customAppFont);
         UIManager.put("Button.arc", 12);
         UIManager.put("Component.arc", 10);
         UIManager.put("TextComponent.arc", 10);
