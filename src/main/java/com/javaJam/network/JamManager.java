@@ -34,7 +34,7 @@ public class JamManager {
     public JamManager(MusicController controller) {
         this.musicController = controller;
 
-        MusicView view = musicController.getView();
+        this.view = musicController.getView();
     }
 
 
@@ -45,6 +45,7 @@ public class JamManager {
 
         new Thread(() -> {
             try {
+
                 serverSocket = new ServerSocket(port);
                 isConnected = true;
 
@@ -100,6 +101,7 @@ public class JamManager {
                 clientSocket = new Socket(ipAddress, port);
                 System.out.println("[JAM CLIENT] Successfully connected to host: " + clientSocket.getRemoteSocketAddress());
                 //set btn color
+                musicController.initCef();
                 view.getJamButton().setBackground(view.accentColor);
 
                 out = new PrintWriter(
@@ -293,6 +295,7 @@ public class JamManager {
 
             } catch (IOException e) {
                 System.out.println("[JAM HOST HANDLER] Client disconnected abruptly: " + socket.getRemoteSocketAddress());
+                view.getJamButton().setBackground(view.buttonDark);
             } finally {
                 clientWriters.remove(writer);
                 System.out.println("[JAM HOST HANDLER] Cleaned up client writer. Remaining clients: " + clientWriters.size());

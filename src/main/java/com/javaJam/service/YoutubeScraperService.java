@@ -24,8 +24,61 @@ public class YoutubeScraperService {
 
     public List<Music> searchTracks(String query) {
         List<Music> tracks = new ArrayList<>();
+        if (query == null || query.trim().isEmpty()) {
+            return tracks;
+        }
+
         try {
-            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+            // 1. Fetch the exact top match for the user's specific search query
+            List<Music> exactMatchTracks = fetchRawYouTubeResults(query, 1);
+            if (!exactMatchTracks.isEmpty()) {
+                tracks.add(exactMatchTracks.get(0));
+            }
+
+            // 2. Extract artist name from query and fetch other popular songs by that artist
+            String artistQuery = extractArtistQuery(query);
+            String secondaryQuery = artistQuery + " songs";
+
+            List<Music> artistTracks = fetchRawYouTubeResults(secondaryQuery, 30);
+
+            String firstVideoId = !tracks.isEmpty() ? extractVideoId(tracks.get(0).getUrl()) : "";
+
+            // Add up to 19 other unique tracks by the artist
+            for (Music music : artistTracks) {
+                if (tracks.size() >= 20) break;
+                String videoId = extractVideoId(music.getUrl());
+                if (videoId != null && !videoId.equals(firstVideoId)) {
+                    boolean exists = tracks.stream().anyMatch(t -> t.getUrl().equals(music.getUrl()));
+                    if (!exists) {
+                        tracks.add(music);
+                    }
+                }
+            }
+
+            // 3. Fallback: If we still need more tracks, fill remaining slots from the original query results
+            if (tracks.size() < 20) {
+                List<Music> fallbackTracks = fetchRawYouTubeResults(query, 30);
+                for (Music music : fallbackTracks) {
+                    if (tracks.size() >= 20) break;
+                    boolean exists = tracks.stream().anyMatch(t -> t.getUrl().equals(music.getUrl()));
+                    if (!exists) {
+                        tracks.add(music);
+                    }
+                }
+            }
+
+            LOGGER.info("Successfully scraped " + tracks.size() + " tracks (1 exact match + related artist tracks).");
+
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error scraping YouTube", e);
+        }
+        return tracks;
+    }
+
+    private List<Music> fetchRawYouTubeResults(String searchQuery, int maxResults) {
+        List<Music> tracks = new ArrayList<>();
+        try {
+            String encodedQuery = URLEncoder.encode(searchQuery, StandardCharsets.UTF_8);
             String url = "https://www.youtube.com/results?search_query=" + encodedQuery;
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -44,7 +97,7 @@ public class YoutubeScraperService {
 
             Matcher matcher = videoBlockPattern.matcher(html);
 
-            while (matcher.find() && tracks.size() < 10) {
+            while (matcher.find() && tracks.size() < maxResults) {
                 String block = matcher.group(1);
 
                 Matcher idMatcher = Pattern.compile(
@@ -64,18 +117,34 @@ public class YoutubeScraperService {
                             .replace("\\\"", "\"")
                             .replace("\\\\", "\\");
 
-                    String videoUrl =
-                            "https://www.youtube.com/watch?v=" + videoId;
+                    String videoUrl = "https://www.youtube.com/watch?v=" + videoId;
 
                     tracks.add(new Music(title, videoUrl));
                 }
             }
-
-            LOGGER.info("Successfully scraped " + tracks.size() + " clean tracks.");
-
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error scraping YouTube", e);
+            LOGGER.log(Level.WARNING, "Error fetching raw YouTube results for: " + searchQuery, e);
         }
         return tracks;
+    }
+
+    private String extractArtistQuery(String query) {
+        String trimmed = query.trim();
+        String[] parts = trimmed.split("\\s+");
+        // Takes the last 2 words of the query (e.g., "lady gaga" from "love game lady gaga")
+        if (parts.length >= 2) {
+            return parts[parts.length - 2] + " " + parts[parts.length - 1];
+        }
+        return trimmed;
+    }
+
+    private String extractVideoId(String url) {
+        if (url == null) return null;
+        Pattern pattern = Pattern.compile("(?:v=|/)([a-zA-Z0-9_-]{11})");
+        Matcher matcher = pattern.matcher(url);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
     }
 }
