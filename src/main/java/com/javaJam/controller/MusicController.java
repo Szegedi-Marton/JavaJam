@@ -1,6 +1,11 @@
 package com.javaJam.controller;
 
 import com.formdev.flatlaf.extras.FlatSVGIcon;
+import com.javaJam.windows.WindowsTaskbarThumbnail;
+import com.sun.jna.Native;
+import com.sun.jna.Pointer;
+import com.sun.jna.platform.win32.User32;
+import com.sun.jna.platform.win32.WinDef;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
 import me.friwi.jcefmaven.CefAppBuilder;
@@ -23,12 +28,15 @@ import org.json.JSONException;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import com.sun.jna.platform.win32.WinUser;
 
 public class MusicController {
 
@@ -68,6 +76,8 @@ public class MusicController {
     private String currentTrackName = "Nothing playing";
     private boolean syncingFromNetwork = false;
 
+    private WindowsTaskbarThumbnail taskbarThumbnail;
+
     private final FlatSVGIcon playIcon = new FlatSVGIcon("icons/play.svg", 18, 18);
     private final FlatSVGIcon pauseIcon = new FlatSVGIcon("icons/pause.svg", 18, 18);
 
@@ -83,11 +93,64 @@ public class MusicController {
         startupSequnce();
     }
 
-    private void startupSequnce(){
+
+    private void startupSequnce() {
+        System.out.println("[CONTROLLER] Executing startup sequence...");
+
         if (view.getMusicListUI() != null) {
+            System.out.println("[CONTROLLER] Music list UI found. Searching default tracks: 'Top 10 music today'");
             searchTracks("Top 10 music today");
+        } else {
+            System.out.println("[CONTROLLER] Music list UI is null on startup, skipping default search.");
+        }
+
+        String osName = System.getProperty("os.name").toLowerCase();
+        System.out.println("[CONTROLLER] Operating System detected: " + osName);
+
+        if (osName.contains("win")) {
+            System.out.println("[CONTROLLER] Windows environment detected. Registering WindowListener for taskbar controls.");
+
+            view.addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowOpened(WindowEvent e) {
+                    System.out.println("[CONTROLLER] Window opened event fired. Initializing taskbar thumbnails on EDT...");
+
+                    SwingUtilities.invokeLater(() -> {
+                        try {
+                            taskbarThumbnail = new WindowsTaskbarThumbnail(
+                                    view,
+                                    MusicController.this::playPreviousTrack,
+                                    MusicController.this::togglePlayPause,
+                                    MusicController.this::playNextTrack,
+                                    MusicController.this
+                            );
+
+                            taskbarThumbnail.initialize();
+                            System.out.println("[CONTROLLER] Windows Taskbar Thumbnail successfully initialized.");
+                        } catch (Exception ex) {
+                            System.err.println("[CONTROLLER] ERROR: Failed to initialize WindowsTaskbarThumbnail: " + ex.getMessage());
+                            ex.printStackTrace();
+                        }
+                    });
+                }
+
+                @Override
+                public void windowClosed(WindowEvent e) {
+                    System.out.println("[CONTROLLER] Window closed event fired. Cleaning up taskbar resources...");
+
+                    if (taskbarThumbnail != null) {
+                        taskbarThumbnail.dispose();
+                        System.out.println("[CONTROLLER] Taskbar thumbnail resources disposed.");
+                    } else {
+                        System.out.println("[CONTROLLER] Taskbar thumbnail was null during window close.");
+                    }
+                }
+            });
+        } else {
+            System.out.println("[CONTROLLER] Non-Windows OS detected. Skipping taskbar thumbnail initialization.");
         }
     }
+
 
     private void initCefPlayer() {
         Thread cefThread = new Thread(() -> {
@@ -222,6 +285,9 @@ public class MusicController {
                                 SwingUtilities.invokeLater(() -> {
                                     if (isPlaying) {
                                         executePlayerCommand("if(typeof playVideo === 'function') { playVideo(); }");
+                                        if (taskbarThumbnail != null) {
+                                            taskbarThumbnail.setPlaying();
+                                        }
                                     }
                                     if (view.getVolumeSlider() != null) {
                                         setPlayerVolume(view.getVolumeSlider().getValue());
@@ -781,6 +847,7 @@ public class MusicController {
 
             view.setNowPlaying(trackName);
             view.getPlayPauseButton().setIcon(playing ? pauseIcon : playIcon);
+            taskbarThumbnail.setPlaying();
 
             if (videoId != null && (!videoId.equals(currentVideoId) || !playerPageLoaded || loadedVideoId == null)) {
                 //System.out.println("[JAM SYNC] Initializing/Switching to track from host: " + videoId);
@@ -831,6 +898,7 @@ public class MusicController {
             return;
         }
 
+
         if (isPlaying) {
             pauseVideo();
             isPlaying = false;
@@ -842,17 +910,9 @@ public class MusicController {
             view.getPlayPauseButton().setIcon(pauseIcon);
             jamManager.sendControlCommand("PLAY", currentVideoTime);
         }
-    }
 
-    private void stopPlayback() {
-        stopVideo();
-        isPlaying = false;
-        view.getPlayPauseButton().setIcon(playIcon);
-        view.getSeekSlider().setValue(0);
-        view.getCurrentTimeLabel().setText("00:00");
-        view.setNowPlaying("Nothing playing");
-        if (jamManager.isConnected() && jamManager.isHost()) {
-            jamManager.sendControlCommand("STOP", 0);
+        if (taskbarThumbnail != null) {
+            taskbarThumbnail.setPlaying();
         }
     }
 
@@ -890,6 +950,8 @@ public class MusicController {
             selectTrackAt(currentTrackIndex);
         }
         else { shuffleTrack();}
+
+
     }
 
     private void playPreviousTrack() {
@@ -1042,6 +1104,11 @@ public class MusicController {
         return view;
     }
 
+    public boolean getPlaybackStatus()
+    {
+        return isPlaying;
+    }
+
     public void releaseBrowserFocus() {
         if (cefBrowser == null) {
             return;
@@ -1075,6 +1142,10 @@ public class MusicController {
 
         if (cefApp != null) {
             cefApp.dispose();
+        }
+
+        if (taskbarThumbnail != null) {
+            taskbarThumbnail.dispose();
         }
     }
 }
