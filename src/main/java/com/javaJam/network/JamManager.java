@@ -1,6 +1,7 @@
 package com.javaJam.network;
 
 import com.javaJam.controller.MusicController;
+import com.javaJam.view.MusicView;
 
 import javax.swing.*;
 import java.io.*;
@@ -14,6 +15,8 @@ public class JamManager {
 
     private ServerSocket serverSocket;
     private Socket clientSocket;
+
+    private MusicView view;
 
     private PrintWriter out;
     private BufferedReader in;
@@ -30,6 +33,8 @@ public class JamManager {
 
     public JamManager(MusicController controller) {
         this.musicController = controller;
+
+        MusicView view = musicController.getView();
     }
 
 
@@ -49,6 +54,8 @@ public class JamManager {
 
                     Socket socket = serverSocket.accept();
                     System.out.println("[JAM HOST] New client connected from: " + socket.getRemoteSocketAddress());
+                    //set btn color
+                    view.getJamButton().setBackground(view.accentColor);
 
                     PrintWriter writer = new PrintWriter(
                             socket.getOutputStream(), true
@@ -67,6 +74,9 @@ public class JamManager {
                             new ClientHandler(socket, writer)
                     ).start();
                 }
+
+                //set btn color
+                view.getJamButton().setBackground(view.buttonDark);
 
             } catch (IOException e) {
                 if (isConnected) {
@@ -89,6 +99,8 @@ public class JamManager {
 
                 clientSocket = new Socket(ipAddress, port);
                 System.out.println("[JAM CLIENT] Successfully connected to host: " + clientSocket.getRemoteSocketAddress());
+                //set btn color
+                view.getJamButton().setBackground(view.accentColor);
 
                 out = new PrintWriter(
                         clientSocket.getOutputStream(), true
@@ -124,6 +136,8 @@ public class JamManager {
             } finally {
                 isConnected = false;
                 System.out.println("[JAM CLIENT] Disconnected from host session.");
+                //set btn color
+                view.getJamButton().setBackground(view.buttonDark);
             }
         }, "Jam-Client-Thread").start();
     }

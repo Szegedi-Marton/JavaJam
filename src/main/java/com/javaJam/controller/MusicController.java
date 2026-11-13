@@ -1,5 +1,6 @@
 package com.javaJam.controller;
 
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
 import me.friwi.jcefmaven.CefAppBuilder;
@@ -59,11 +60,15 @@ public class MusicController {
     private boolean isPlaying = false;
     private boolean repeatEnabled = false;
     private boolean isSeeking = false;
+    private boolean shuffleEnabled = false;
     private Timer playbackTimer;
     private double cachedDuration = 0;
     private String currentVideoId = null;
     private String currentTrackName = "Nothing playing";
     private boolean syncingFromNetwork = false;
+
+    private final FlatSVGIcon playIcon = new FlatSVGIcon("icons/play.svg", 18, 18);
+    private final FlatSVGIcon pauseIcon = new FlatSVGIcon("icons/pause.svg", 18, 18);
 
     public MusicController(MusicView view) {
         this.view = view;
@@ -411,14 +416,7 @@ public class MusicController {
         });
 
         // Shuffle
-        view.getShuffleButton().addActionListener(e -> {
-
-            if (jamManager.isConnected() && !jamManager.isHost()) {
-                jamManager.sendControlCommand("SHUFFLE", 0);
-            } else {
-                shuffleTrack();
-            }
-        });
+        view.getShuffleButton().addActionListener(e -> toggleShuffle());
 
         // Repeat
         view.getRepeatButton().addActionListener(e -> toggleRepeat());
@@ -570,7 +568,6 @@ public class MusicController {
             );
         }
 
-        // Start playback after the YouTube player is ready.
         executePlayerCommand(
                 "window.playVideo()"
         );
@@ -627,7 +624,6 @@ public class MusicController {
 
                 progressRequestPending = false;
 
-                // Ignore results belonging to an older track.
                 if (generation != playbackGeneration) {
                     return;
                 }
@@ -650,10 +646,9 @@ public class MusicController {
                     return;
                 }
 
-                // Only advance after the current video has actually started.
                 if (trackStarted &&
                         currentTime > 0 &&
-                        duration - currentTime <= 2.0 &&
+                        duration - currentTime <= 10 &&
                         tracks != null &&
                         !tracks.isEmpty()) {
 
@@ -681,7 +676,6 @@ public class MusicController {
                 );
             });
         });
-
         playbackTimer.start();
     }
 
@@ -743,7 +737,7 @@ public class MusicController {
         view.getCurrentTimeLabel().setText("00:00");
 
         view.setNowPlaying(track.getName());
-        view.getPlayPauseButton().setText("Ⅱ");
+        view.getPlayPauseButton().setIcon(pauseIcon);
 
         String videoId = extractVideoId(track.getUrl());
 
@@ -769,7 +763,7 @@ public class MusicController {
             currentTrackName = trackName;
 
             view.setNowPlaying(trackName);
-            view.getPlayPauseButton().setText(playing ? "Ⅱ" : "▶");
+            view.getPlayPauseButton().setIcon(playing ? pauseIcon : playIcon);
 
             if (videoId != null && (!videoId.equals(currentVideoId) || !playerPageLoaded || loadedVideoId == null)) {
                 //System.out.println("[JAM SYNC] Initializing/Switching to track from host: " + videoId);
@@ -823,12 +817,12 @@ public class MusicController {
         if (isPlaying) {
             pauseVideo();
             isPlaying = false;
-            view.getPlayPauseButton().setText("▶");
+            view.getPlayPauseButton().setIcon(playIcon);
             jamManager.sendControlCommand("PAUSE", currentVideoTime);
         } else {
             playVideo();
             isPlaying = true;
-            view.getPlayPauseButton().setText("Ⅱ");
+            view.getPlayPauseButton().setIcon(pauseIcon);
             jamManager.sendControlCommand("PLAY", currentVideoTime);
         }
     }
@@ -836,7 +830,7 @@ public class MusicController {
     private void stopPlayback() {
         stopVideo();
         isPlaying = false;
-        view.getPlayPauseButton().setText("▶");
+        view.getPlayPauseButton().setIcon(playIcon);
         view.getSeekSlider().setValue(0);
         view.getCurrentTimeLabel().setText("00:00");
         view.setNowPlaying("Nothing playing");
@@ -847,22 +841,38 @@ public class MusicController {
 
     private void toggleRepeat() {
         repeatEnabled = !repeatEnabled;
-        view.getRepeatButton().setText(repeatEnabled ? "Repeat ON" : "Repeat");
+        if (repeatEnabled) {
+            view.getRepeatButton().setBackground(view.accentColor);
+        } else {
+            view.getRepeatButton().setBackground(view.buttonDark);
+        }
+        view.getRepeatButton().repaint();
         setRepeatEnabledInJs(repeatEnabled);
     }
 
     private void playNextTrack() {
-        int size = view.getListModel().size();
-        if (size == 0) {
+        if (repeatEnabled){
+            seekVideo(1);
+            currentVideoTime = 1;
+            isPlaying = true;
+            trackStarted = true;
             isAdvancingTrack = false;
             return;
         }
+        if (!shuffleEnabled){
+            int size = view.getListModel().size();
+            if (size == 0) {
+                isAdvancingTrack = false;
+                return;
+            }
 
-        currentTrackIndex++;
-        if (currentTrackIndex >= size) {
-            currentTrackIndex = 0;
+            currentTrackIndex++;
+            if (currentTrackIndex >= size) {
+                currentTrackIndex = 0;
+            }
+            selectTrackAt(currentTrackIndex);
         }
-        selectTrackAt(currentTrackIndex);
+        else { shuffleTrack();}
     }
 
     private void playPreviousTrack() {
@@ -876,16 +886,33 @@ public class MusicController {
         selectTrackAt(currentTrackIndex);
     }
 
+    private void toggleShuffle() {
+        shuffleEnabled = !shuffleEnabled;
+
+        if (shuffleEnabled) {
+            view.getShuffleButton().setBackground(view.accentColor);
+        } else {
+            view.getShuffleButton().setBackground(view.buttonDark);
+        }
+        view.getShuffleButton().repaint();
+    }
+
     private void shuffleTrack() {
-        int size = view.getListModel().size();
-        if (size <= 1) return;
+        if (jamManager.isConnected() && !jamManager.isHost()) {
+            jamManager.sendControlCommand("SHUFFLE", 0);
+        }
+        else {
 
-        int randomIndex;
-        do {
-            randomIndex = (int) (Math.random() * size);
-        } while (randomIndex == currentTrackIndex);
+            int size = view.getListModel().size();
+            if (size <= 1) return;
 
-        selectTrackAt(randomIndex);
+            int randomIndex;
+            do {
+                randomIndex = (int) (Math.random() * size);
+            } while (randomIndex == currentTrackIndex);
+
+            selectTrackAt(randomIndex);
+        }
     }
 
     private void selectTrackAt(int index) {
@@ -945,13 +972,13 @@ public class MusicController {
     public void remotePlay() {
         isPlaying = true;
         playVideo();
-        view.getPlayPauseButton().setText("Ⅱ");
+        view.getPlayPauseButton().setIcon(pauseIcon);
     }
 
     public void remotePause() {
         isPlaying = false;
         pauseVideo();
-        view.getPlayPauseButton().setText("▶");
+        view.getPlayPauseButton().setIcon(playIcon);
     }
 
     public void remoteSeek(double position) {
@@ -968,13 +995,13 @@ public class MusicController {
     }
 
     public void remoteShuffle() {
-        shuffleTrack();
+        toggleShuffle();
     }
 
     public void remoteStop() {
         stopVideo();
         isPlaying = false;
-        view.getPlayPauseButton().setText("▶");
+        view.getPlayPauseButton().setIcon(playIcon);
         view.getSeekSlider().setValue(0);
         view.getCurrentTimeLabel().setText("00:00");
         view.setNowPlaying("Nothing playing");
@@ -987,7 +1014,7 @@ public class MusicController {
             currentVideoId = videoId;
             isPlaying = true;
             view.setNowPlaying(trackName);
-            view.getPlayPauseButton().setText("Ⅱ");
+            view.getPlayPauseButton().setIcon(pauseIcon);
             loadVideoInApp(videoId);
         } finally {
             syncingFromNetwork = false;
