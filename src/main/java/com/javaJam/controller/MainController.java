@@ -2,7 +2,11 @@ package com.javaJam.controller;
 
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.javaJam.service.FontLoader;
+import com.javaJam.service.UpdateChecker;
 import com.javaJam.view.MusicView;
+import com.javaJam.view.ProfileView;
+import com.javaJam.view.SettingsView;
+import com.javaJam.view.UpdateView;
 
 import javax.swing.*;
 import java.awt.*;
@@ -11,8 +15,12 @@ import java.awt.*;
 public class MainController {
 
 
-    private MusicView view;
+    private MusicView musicView;
+    private SettingsView settingsView;
+    private ProfileView profileView;
     private MusicController musicController;
+    private SettingsController settingsController;
+    private ProfileController profileController;
 
 
     public MainController() {
@@ -30,13 +38,26 @@ public class MainController {
             System.err.println("Failed to initialize FlatLaf");
         }
 
-        view = new MusicView();
-        musicController = new MusicController(view);
+        musicView = new MusicView();
+        settingsView = new SettingsView();
+        profileView = new ProfileView();
+        musicController = new MusicController(musicView,settingsView,profileView);
+        settingsController = new SettingsController(musicView, settingsView);
+        profileController = new ProfileController(musicView,profileView);
     }
 
 
     public void start() {
-        view.setVisible(true);
+        UpdateChecker.checkForUpdates(
+                () -> {
+                    musicView.setVisible(true);
+                },
+                (latestVersion) -> {
+                    UpdateView updateView = new UpdateView(latestVersion);
+                    updateView.setVisible(true);
+                    updateView.setController(this);
+                }
+        );
     }
 
     public void shutdown() {

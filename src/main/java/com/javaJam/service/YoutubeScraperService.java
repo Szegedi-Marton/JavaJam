@@ -29,21 +29,16 @@ public class YoutubeScraperService {
         }
 
         try {
-            // 1. Fetch the exact top match for the user's specific search query
             List<Music> exactMatchTracks = fetchRawYouTubeResults(query, 1);
             if (!exactMatchTracks.isEmpty()) {
                 tracks.add(exactMatchTracks.get(0));
             }
 
-            // 2. Extract artist name from query and fetch other popular songs by that artist
             String artistQuery = extractArtistQuery(query);
             String secondaryQuery = artistQuery + " songs";
-
             List<Music> artistTracks = fetchRawYouTubeResults(secondaryQuery, 30);
-
             String firstVideoId = !tracks.isEmpty() ? extractVideoId(tracks.get(0).getUrl()) : "";
 
-            // Add up to 19 other unique tracks by the artist
             for (Music music : artistTracks) {
                 if (tracks.size() >= 20) break;
                 String videoId = extractVideoId(music.getUrl());
@@ -55,7 +50,6 @@ public class YoutubeScraperService {
                 }
             }
 
-            // 3. Fallback: If we still need more tracks, fill remaining slots from the original query results
             if (tracks.size() < 20) {
                 List<Music> fallbackTracks = fetchRawYouTubeResults(query, 30);
                 for (Music music : fallbackTracks) {
@@ -131,7 +125,6 @@ public class YoutubeScraperService {
     private String extractArtistQuery(String query) {
         String trimmed = query.trim();
         String[] parts = trimmed.split("\\s+");
-        // Takes the last 2 words of the query (e.g., "lady gaga" from "love game lady gaga")
         if (parts.length >= 2) {
             return parts[parts.length - 2] + " " + parts[parts.length - 1];
         }

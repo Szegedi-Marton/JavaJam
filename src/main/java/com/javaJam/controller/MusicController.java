@@ -1,11 +1,9 @@
 package com.javaJam.controller;
 
 import com.formdev.flatlaf.extras.FlatSVGIcon;
+import com.javaJam.view.ProfileView;
+import com.javaJam.view.SettingsView;
 import com.javaJam.windows.WindowsTaskbarThumbnail;
-import com.sun.jna.Native;
-import com.sun.jna.Pointer;
-import com.sun.jna.platform.win32.User32;
-import com.sun.jna.platform.win32.WinDef;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
 import me.friwi.jcefmaven.CefAppBuilder;
@@ -36,7 +34,6 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import com.sun.jna.platform.win32.WinUser;
 
 public class MusicController {
 
@@ -55,7 +52,10 @@ public class MusicController {
     private HttpServer playerServer;
     private int playerServerPort;
 
-    private final MusicView view;
+    private final MusicView musicView;
+    private final SettingsView settingsView;
+    private final ProfileView profileView;
+
     private final YoutubeScraperService scraper;
     private JamManager jamManager;
     private String loadedVideoId = null;
@@ -81,9 +81,11 @@ public class MusicController {
     private final FlatSVGIcon playIcon = new FlatSVGIcon("icons/play.svg", 18, 18);
     private final FlatSVGIcon pauseIcon = new FlatSVGIcon("icons/pause.svg", 18, 18);
 
-    public MusicController(MusicView view) {
-        this.view = view;
-        this.view.setMusicController(this);
+    public MusicController(MusicView view, SettingsView settingsView, ProfileView profileView) {
+        this.musicView = view;
+        this.settingsView = settingsView;
+        this.profileView = profileView;
+        this.musicView.setMusicController(this);
         this.scraper = new YoutubeScraperService();
         this.jamManager = new JamManager(this);
 
@@ -97,7 +99,7 @@ public class MusicController {
     private void startupSequnce() {
         System.out.println("[CONTROLLER] Executing startup sequence...");
 
-        if (view.getMusicListUI() != null) {
+        if (musicView.getMusicListUI() != null) {
             System.out.println("[CONTROLLER] Music list UI found. Searching default tracks: 'Top 10 music today'");
             searchTracks("Top 10 music today");
         } else {
@@ -110,7 +112,7 @@ public class MusicController {
         if (osName.contains("win")) {
             System.out.println("[CONTROLLER] Windows environment detected. Registering WindowListener for taskbar controls.");
 
-            view.addWindowListener(new WindowAdapter() {
+            musicView.addWindowListener(new WindowAdapter() {
                 @Override
                 public void windowOpened(WindowEvent e) {
                     System.out.println("[CONTROLLER] Window opened event fired. Initializing taskbar thumbnails on EDT...");
@@ -118,7 +120,7 @@ public class MusicController {
                     SwingUtilities.invokeLater(() -> {
                         try {
                             taskbarThumbnail = new WindowsTaskbarThumbnail(
-                                    view,
+                                    musicView,
                                     MusicController.this::playPreviousTrack,
                                     MusicController.this::togglePlayPause,
                                     MusicController.this::playNextTrack,
@@ -279,6 +281,16 @@ public class MusicController {
                     public void onLoadEnd(CefBrowser browser, CefFrame frame, int httpStatusCode) {
                         if (frame.isMain() && httpStatusCode == 200) {
                             String currentUrl = browser.getURL();
+                            frame.executeJavaScript(
+                                    "if (navigator.mediaDevices) {" +
+                                            "  navigator.mediaDevices.getUserMedia = function() {" +
+                                            "    return Promise.reject(new Error('Camera access is disabled by this application.'));" +
+                                            "  };" +
+                                            "  navigator.mediaDevices.webkitGetUserMedia = navigator.mediaDevices.getUserMedia;" +
+                                            "  navigator.mediaDevices.mozGetUserMedia = navigator.mediaDevices.getUserMedia;" +
+                                            "}",
+                                    frame.getURL(), 0
+                            );
                             if (currentUrl != null && currentUrl.contains("/player/")) {
                                 System.out.println("[JCEF] Player page load complete. Sending initial JS start command...");
 
@@ -289,8 +301,8 @@ public class MusicController {
                                             taskbarThumbnail.setPlaying();
                                         }
                                     }
-                                    if (view.getVolumeSlider() != null) {
-                                        setPlayerVolume(view.getVolumeSlider().getValue());
+                                    if (musicView.getVolumeSlider() != null) {
+                                        setPlayerVolume(musicView.getVolumeSlider().getValue());
                                     }
                                 });
                             }
@@ -332,13 +344,13 @@ public class MusicController {
 
                     Component browserComponent = cefBrowser.getUIComponent();
 
-                    view.getBrowserPanel().add(
+                    musicView.getBrowserPanel().add(
                             browserComponent,
                             BorderLayout.CENTER
                     );
 
-                    view.getBrowserPanel().revalidate();
-                    view.getBrowserPanel().repaint();
+                    musicView.getBrowserPanel().revalidate();
+                    musicView.getBrowserPanel().repaint();
 
                 });
 
@@ -437,21 +449,21 @@ public class MusicController {
 
     private void initController() {
         // Search
-        view.getSearchField().addActionListener(e -> {
-            String query = view.getSearchField().getText().trim();
+        musicView.getSearchField().addActionListener(e -> {
+            String query = musicView.getSearchField().getText().trim();
             if (!query.isEmpty()) {
                 searchTracks(query);
             }
         });
 
         // Select a track from list
-        view.getMusicListUI().addListSelectionListener(e -> {
+        musicView.getMusicListUI().addListSelectionListener(e -> {
             if (e.getValueIsAdjusting() || syncingFromNetwork) return;
 
-            Music selected = view.getMusicListUI().getSelectedValue();
+            Music selected = musicView.getMusicListUI().getSelectedValue();
             if (selected == null) return;
 
-            currentTrackIndex = view.getMusicListUI().getSelectedIndex();
+            currentTrackIndex = musicView.getMusicListUI().getSelectedIndex();
 
             if (jamManager.isConnected() && !jamManager.isHost()) {
                 String videoId = extractVideoId(selected.getUrl());
@@ -465,10 +477,10 @@ public class MusicController {
         });
 
         // Play
-        view.getPlayPauseButton().addActionListener(e -> togglePlayPause());
+        musicView.getPlayPauseButton().addActionListener(e -> togglePlayPause());
 
         // Previous
-        view.getPrevButton().addActionListener(e -> {
+        musicView.getPrevButton().addActionListener(e -> {
 
             if (jamManager.isConnected() && !jamManager.isHost()) {
                 jamManager.sendControlCommand("PREVIOUS", 0);
@@ -478,7 +490,7 @@ public class MusicController {
         });
 
         // Next
-        view.getNextButton().addActionListener(e -> {
+        musicView.getNextButton().addActionListener(e -> {
 
             if (jamManager.isConnected() && !jamManager.isHost()) {
                 jamManager.sendControlCommand("NEXT", 0);
@@ -488,23 +500,23 @@ public class MusicController {
         });
 
         // Shuffle
-        view.getShuffleButton().addActionListener(e -> toggleShuffle());
+        musicView.getShuffleButton().addActionListener(e -> toggleShuffle());
 
         // Repeat
-        view.getRepeatButton().addActionListener(e -> toggleRepeat());
+        musicView.getRepeatButton().addActionListener(e -> toggleRepeat());
 
-        view.getJamButton().addActionListener(e -> handleJamAction());
+        musicView.getJamButton().addActionListener(e -> handleJamAction());
 
         // Volume
-        view.getVolumeSlider().addChangeListener(e -> {
-            if (!view.getVolumeSlider().getValueIsAdjusting()) {
-                setPlayerVolume(view.getVolumeSlider().getValue());
+        musicView.getVolumeSlider().addChangeListener(e -> {
+            if (!musicView.getVolumeSlider().getValueIsAdjusting()) {
+                setPlayerVolume(musicView.getVolumeSlider().getValue());
             }
         });
 
-        view.getSeekSlider().addChangeListener(e -> {
+        musicView.getSeekSlider().addChangeListener(e -> {
 
-            JSlider slider = view.getSeekSlider();
+            JSlider slider = musicView.getSeekSlider();
 
             if (slider.getValueIsAdjusting()) {
 
@@ -515,7 +527,7 @@ public class MusicController {
                 if (duration > 0) {
                     double target = duration * slider.getValue() / 1000.0;
 
-                    view.getCurrentTimeLabel().setText(formatTime(target));
+                    musicView.getCurrentTimeLabel().setText(formatTime(target));
                 }
 
             } else if (isSeeking) {
@@ -539,18 +551,17 @@ public class MusicController {
             }
         });
 
-        view.getProfileMenuItem().addActionListener(e -> {
-            // Handle profile click
-            System.out.println("Profile clicked");
+        musicView.getProfileMenuItem().addActionListener(e -> {
+            musicView.showNewView(profileView);
+
         });
 
-        view.getSettingsMenuItem().addActionListener(e -> {
-            // Handle settings click
-            System.out.println("Settings clicked");
+        musicView.getSettingsMenuItem().addActionListener(e -> {
+            musicView.showNewView(settingsView);
         });
 
-        view.getProfileButton().addActionListener(e -> {
-            view.getProfileMenu().show(view.getProfileButton(), 0, view.getProfileButton().getHeight());
+        musicView.getProfileButton().addActionListener(e -> {
+            musicView.getProfileMenu().show(musicView.getProfileButton(), 0, musicView.getProfileButton().getHeight());
         });
     }
 
@@ -658,23 +669,23 @@ public class MusicController {
 
     private void handleJamAction() {
         String[] options = {"Host Session", "Join Session", "Cancel"};
-        int choice = JOptionPane.showOptionDialog(view, "Choose Jam Mode:", "Jam Session", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
+        int choice = JOptionPane.showOptionDialog(musicView, "Choose Jam Mode:", "Jam Session", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
 
         if (choice == 0) {
             // HOST MODE
-            String portStr = JOptionPane.showInputDialog(view, "Enter port to host on:", "8888");
+            String portStr = JOptionPane.showInputDialog(musicView, "Enter port to host on:", "8888");
             if (portStr != null && !portStr.trim().isEmpty()) {
                 try {
                     int port = Integer.parseInt(portStr.trim());
                     jamManager.startHosting(port);
 
                 } catch (NumberFormatException ex) {
-                    JOptionPane.showMessageDialog(view, "Invalid port number.", "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(musicView, "Invalid port number.", "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         } else if (choice == 1) {
             // CLIENT MODE
-            String input = JOptionPane.showInputDialog(view, "Enter Host IP:Port (e.g. 192.168.1.50:8888):", "127.0.0.1:8888");
+            String input = JOptionPane.showInputDialog(musicView, "Enter Host IP:Port (e.g. 192.168.1.50:8888):", "127.0.0.1:8888");
             if (input != null && input.contains(":")) {
                 String[] parts = input.split(":");
                 String ip = parts[0].trim();
@@ -682,7 +693,7 @@ public class MusicController {
                     int port = Integer.parseInt(parts[1].trim());
                     jamManager.joinHost(ip, port);
                 } catch (NumberFormatException ex) {
-                    JOptionPane.showMessageDialog(view, "Invalid IP or Port format.", "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(musicView, "Invalid IP or Port format.", "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }
@@ -695,7 +706,7 @@ public class MusicController {
             if (isSeeking ||
                     isAdvancingTrack ||
                     progressRequestPending ||
-                    view.getSeekSlider().getValueIsAdjusting()) {
+                    musicView.getSeekSlider().getValueIsAdjusting()) {
                 return;
             }
 
@@ -717,15 +728,15 @@ public class MusicController {
 
                 cachedDuration = duration;
 
-                view.getCurrentTimeLabel().setText(formatTime(currentTime));
-                view.getDurationLabel().setText(formatTime(duration));
+                musicView.getCurrentTimeLabel().setText(formatTime(currentTime));
+                musicView.getDurationLabel().setText(formatTime(duration));
 
                 if (currentVideoId != null && isPlaying && !syncingFromNetwork) {
 
                     broadcastCurrentState();
                 }
 
-                if (isSeeking || view.getSeekSlider().getValueIsAdjusting()) {
+                if (isSeeking || musicView.getSeekSlider().getValueIsAdjusting()) {
                     return;
                 }
 
@@ -743,8 +754,8 @@ public class MusicController {
 
                     SwingUtilities.invokeLater(() -> {
 
-                        view.getSeekSlider().setValue(0);
-                        view.getCurrentTimeLabel().setText("00:00");
+                        musicView.getSeekSlider().setValue(0);
+                        musicView.getCurrentTimeLabel().setText("00:00");
 
                         playNextTrack();
                     });
@@ -754,7 +765,7 @@ public class MusicController {
 
                 int progress = (int) (currentTime / duration * 1000);
 
-                view.getSeekSlider().setValue(
+                musicView.getSeekSlider().setValue(
                         Math.max(0, Math.min(1000, progress))
                 );
             });
@@ -783,16 +794,16 @@ public class MusicController {
             protected void done() {
                 try {
                     tracks = get();
-                    view.getListModel().clear();
+                    musicView.getListModel().clear();
 
                     for (Music track : tracks) {
-                        view.getListModel().addElement(track);
+                        musicView.getListModel().addElement(track);
                     }
 
                     currentTrackIndex = -1;
                 } catch (Exception e) {
                     e.printStackTrace();
-                    JOptionPane.showMessageDialog(view, "Unable to search YouTube tracks.", "Search Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(musicView, "Unable to search YouTube tracks.", "Search Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -816,11 +827,11 @@ public class MusicController {
 
         currentTrackName = track.getName();
 
-        view.getSeekSlider().setValue(0);
-        view.getCurrentTimeLabel().setText("00:00");
+        musicView.getSeekSlider().setValue(0);
+        musicView.getCurrentTimeLabel().setText("00:00");
 
-        view.setNowPlaying(track.getName());
-        view.getPlayPauseButton().setIcon(pauseIcon);
+        musicView.setNowPlaying(track.getName());
+        musicView.getPlayPauseButton().setIcon(pauseIcon);
 
         String videoId = extractVideoId(track.getUrl());
 
@@ -845,8 +856,8 @@ public class MusicController {
             isAdvancingTrack = false;
             currentTrackName = trackName;
 
-            view.setNowPlaying(trackName);
-            view.getPlayPauseButton().setIcon(playing ? pauseIcon : playIcon);
+            musicView.setNowPlaying(trackName);
+            musicView.getPlayPauseButton().setIcon(playing ? pauseIcon : playIcon);
             taskbarThumbnail.setPlaying();
 
             if (videoId != null && (!videoId.equals(currentVideoId) || !playerPageLoaded || loadedVideoId == null)) {
@@ -902,12 +913,12 @@ public class MusicController {
         if (isPlaying) {
             pauseVideo();
             isPlaying = false;
-            view.getPlayPauseButton().setIcon(playIcon);
+            musicView.getPlayPauseButton().setIcon(playIcon);
             jamManager.sendControlCommand("PAUSE", currentVideoTime);
         } else {
             playVideo();
             isPlaying = true;
-            view.getPlayPauseButton().setIcon(pauseIcon);
+            musicView.getPlayPauseButton().setIcon(pauseIcon);
             jamManager.sendControlCommand("PLAY", currentVideoTime);
         }
 
@@ -919,11 +930,11 @@ public class MusicController {
     private void toggleRepeat() {
         repeatEnabled = !repeatEnabled;
         if (repeatEnabled) {
-            view.getRepeatButton().setBackground(view.accentColor);
+            musicView.getRepeatButton().setBackground(musicView.accentColor);
         } else {
-            view.getRepeatButton().setBackground(view.buttonDark);
+            musicView.getRepeatButton().setBackground(musicView.buttonDark);
         }
-        view.getRepeatButton().repaint();
+        musicView.getRepeatButton().repaint();
         setRepeatEnabledInJs(repeatEnabled);
     }
 
@@ -937,7 +948,7 @@ public class MusicController {
             return;
         }
         if (!shuffleEnabled){
-            int size = view.getListModel().size();
+            int size = musicView.getListModel().size();
             if (size == 0) {
                 isAdvancingTrack = false;
                 return;
@@ -955,7 +966,7 @@ public class MusicController {
     }
 
     private void playPreviousTrack() {
-        int size = view.getListModel().size();
+        int size = musicView.getListModel().size();
         if (size == 0) return;
 
         currentTrackIndex--;
@@ -969,11 +980,11 @@ public class MusicController {
         shuffleEnabled = !shuffleEnabled;
 
         if (shuffleEnabled) {
-            view.getShuffleButton().setBackground(view.accentColor);
+            musicView.getShuffleButton().setBackground(musicView.accentColor);
         } else {
-            view.getShuffleButton().setBackground(view.buttonDark);
+            musicView.getShuffleButton().setBackground(musicView.buttonDark);
         }
-        view.getShuffleButton().repaint();
+        musicView.getShuffleButton().repaint();
     }
 
     private void shuffleTrack() {
@@ -982,7 +993,7 @@ public class MusicController {
         }
         else {
 
-            int size = view.getListModel().size();
+            int size = musicView.getListModel().size();
             if (size <= 1) return;
 
             int randomIndex;
@@ -995,9 +1006,9 @@ public class MusicController {
     }
 
     private void selectTrackAt(int index) {
-        view.getMusicListUI().setSelectedIndex(index);
-        view.getMusicListUI().ensureIndexIsVisible(index);
-        Music track = view.getListModel().getElementAt(index);
+        musicView.getMusicListUI().setSelectedIndex(index);
+        musicView.getMusicListUI().ensureIndexIsVisible(index);
+        Music track = musicView.getListModel().getElementAt(index);
         if (track != null) {
             String videoId = extractVideoId(track.getUrl());
             if (videoId != null) {
@@ -1051,13 +1062,13 @@ public class MusicController {
     public void remotePlay() {
         isPlaying = true;
         playVideo();
-        view.getPlayPauseButton().setIcon(pauseIcon);
+        musicView.getPlayPauseButton().setIcon(pauseIcon);
     }
 
     public void remotePause() {
         isPlaying = false;
         pauseVideo();
-        view.getPlayPauseButton().setIcon(playIcon);
+        musicView.getPlayPauseButton().setIcon(playIcon);
     }
 
     public void remoteSeek(double position) {
@@ -1080,10 +1091,10 @@ public class MusicController {
     public void remoteStop() {
         stopVideo();
         isPlaying = false;
-        view.getPlayPauseButton().setIcon(playIcon);
-        view.getSeekSlider().setValue(0);
-        view.getCurrentTimeLabel().setText("00:00");
-        view.setNowPlaying("Nothing playing");
+        musicView.getPlayPauseButton().setIcon(playIcon);
+        musicView.getSeekSlider().setValue(0);
+        musicView.getCurrentTimeLabel().setText("00:00");
+        musicView.setNowPlaying("Nothing playing");
     }
 
     public void remoteSelectTrack(String videoId, String trackName) {
@@ -1092,16 +1103,16 @@ public class MusicController {
             currentTrackName = trackName;
             currentVideoId = videoId;
             isPlaying = true;
-            view.setNowPlaying(trackName);
-            view.getPlayPauseButton().setIcon(pauseIcon);
+            musicView.setNowPlaying(trackName);
+            musicView.getPlayPauseButton().setIcon(pauseIcon);
             loadVideoInApp(videoId);
         } finally {
             syncingFromNetwork = false;
         }
     }
 
-    public MusicView getView() {
-        return view;
+    public MusicView getMusicView() {
+        return musicView;
     }
 
     public boolean getPlaybackStatus()
@@ -1127,25 +1138,34 @@ public class MusicController {
 
 
     public void shutdown() {
-
         if (playerServer != null) {
-            playerServer.stop(0);
+            try {
+                playerServer.stop(0);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
-
-        if (cefBrowser != null) {
-            cefBrowser.close(true);
+        try {
+            if (cefBrowser != null) {
+                cefBrowser.setCloseAllowed();
+                cefBrowser.close(true);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        if (cefClient != null) {
-            cefClient.dispose();
+        try {
+            if (cefClient != null) {
+                cefClient.dispose();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        if (cefApp != null) {
-            cefApp.dispose();
-        }
-
         if (taskbarThumbnail != null) {
-            taskbarThumbnail.dispose();
+            try {
+                taskbarThumbnail.dispose();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 }
