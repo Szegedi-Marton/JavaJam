@@ -33,8 +33,7 @@ public class JamManager {
 
     public JamManager(MusicController controller) {
         this.musicController = controller;
-
-        this.view = musicController.getView();
+        this.view = musicController.getMusicView();
     }
 
 
@@ -130,7 +129,7 @@ public class JamManager {
 
                 SwingUtilities.invokeLater(() ->
                         JOptionPane.showMessageDialog(
-                                musicController.getView(),
+                                musicController.getMusicView(),
                                 "Connection lost: " + e.getMessage()
                         )
                 );
