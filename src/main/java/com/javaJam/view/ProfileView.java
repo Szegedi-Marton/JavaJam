@@ -16,7 +16,6 @@ public class ProfileView extends JPanel {
         setBackground(BG_DARK);
         setBorder(BorderFactory.createEmptyBorder(30, 40, 30, 40));
 
-        // Header Panel with Back Button and Title
         JPanel headerWrapper = new JPanel();
         headerWrapper.setLayout(new BoxLayout(headerWrapper, BoxLayout.Y_AXIS));
         headerWrapper.setOpaque(false);
@@ -37,12 +36,11 @@ public class ProfileView extends JPanel {
 
         add(headerWrapper, BorderLayout.NORTH);
 
-        // Content Panel (Vertical layout for profile information)
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setBackground(BG_DARK);
 
-        // --- 1. Account Information Section ---
+        //Account Info
         contentPanel.add(createSectionHeader("Account Details"));
         contentPanel.add(Box.createVerticalStrut(10));
 
@@ -56,7 +54,7 @@ public class ProfileView extends JPanel {
         contentPanel.add(createProfileRow("Email", emailField));
         contentPanel.add(Box.createVerticalStrut(30));
 
-        // --- 2. Statistics Section ---
+        //Statistics
         contentPanel.add(createSectionHeader("Listening Stats"));
         contentPanel.add(Box.createVerticalStrut(12));
 
@@ -69,7 +67,6 @@ public class ProfileView extends JPanel {
         genreLabel.setForeground(TEXT_LIGHT);
         contentPanel.add(genreLabel);
 
-        // Wrap the form in a JScrollPane for clean responsiveness
         JScrollPane scrollPane = new JScrollPane(contentPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.setOpaque(false);

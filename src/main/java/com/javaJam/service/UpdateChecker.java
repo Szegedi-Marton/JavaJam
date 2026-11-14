@@ -38,7 +38,6 @@ public class UpdateChecker {
                     String latestTag = extractFirstTagName(json);
 
                     if (latestTag != null && isNewerVersion(CURRENT_VERSION, latestTag)) {
-                        // Trigger update available callback on the EDT
                         SwingUtilities.invokeLater(() -> onUpdateAvailable.accept(latestTag));
                         return;
                     }
@@ -47,7 +46,6 @@ public class UpdateChecker {
                 System.out.println("[UPDATE] Could not check for updates: " + e.getMessage());
             }
 
-            // If no update found or offline/error, proceed with normal app launch on the EDT
             SwingUtilities.invokeLater(onNoUpdate);
         });
         updateThread.setDaemon(true);

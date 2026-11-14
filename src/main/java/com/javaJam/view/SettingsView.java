@@ -40,12 +40,11 @@ public class SettingsView extends JPanel {
 
         add(headerWrapper, BorderLayout.NORTH);
 
-        // Content Panel (Vertical layout for categorized options)
+        //Content Panel
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setBackground(BG_DARK);
 
-        // --- 1. Playback & Video Section ---
         contentPanel.add(createSectionHeader("Playback & Video"));
         contentPanel.add(Box.createVerticalStrut(10));
 
@@ -64,7 +63,7 @@ public class SettingsView extends JPanel {
         contentPanel.add(createSettingRow("Video Cutoff Back (sec)", cutoffBackField));
         contentPanel.add(Box.createVerticalStrut(30));
 
-        // --- 2. About Section ---
+        //About
         contentPanel.add(createSectionHeader("About JavaJam"));
         contentPanel.add(Box.createVerticalStrut(10));
 
@@ -73,7 +72,6 @@ public class SettingsView extends JPanel {
         versionLabel.setForeground(TEXT_LIGHT);
         contentPanel.add(versionLabel);
 
-        // Wrap the entire form in a JScrollPane to ensure responsiveness on smaller window sizes
         JScrollPane scrollPane = new JScrollPane(contentPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.setOpaque(false);

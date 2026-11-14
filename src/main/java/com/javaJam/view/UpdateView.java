@@ -34,19 +34,17 @@ public class UpdateView extends JFrame {
             }
         });
 
-        // Content panel with vertical layout
+
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
         mainPanel.setBackground(BG_DARK);
         mainPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Title
         JLabel titleLabel = new JLabel("A New Version is Available!");
         titleLabel.setForeground(TEXT_LIGHT);
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 16f));
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Description with version details
         JLabel descLabel = new JLabel(
                 "<html><div style='text-align: center;'>Version <b>" + latestVersion +
                         "</b> has been released on GitHub.<br>Please update your application!</div></html>"
@@ -85,7 +83,6 @@ public class UpdateView extends JFrame {
 
         buttonPanel.add(openButton);
         buttonPanel.add(exitButton);
-
 
         mainPanel.add(titleLabel);
         mainPanel.add(Box.createVerticalStrut(12));
